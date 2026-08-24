@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>آگهی‌های من — Reverb</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div id="header-root"></div>
+<div id="toast-region" aria-live="polite"></div>
+
+<main class="page">
+    <div class="topbar">
+        <div class="topbar-inner">
+            <button class="back-circle" onclick="window.location.href='/index.html'">→</button>
+            <div class="topbar-title" id="user-info"></div>
+            <button class="outline-button" style="margin-right:auto;min-height:36px" onclick="logout()">↪ خروج</button>
+        </div>
+    </div>
+
+    <div class="content-narrow">
+        <div class="stats-grid">
+            <div class="stat-card"><div class="stat-icon">◇</div><p class="stat-value" id="stat-ads">۰</p><span class="stat-label">آگهی‌های من</span></div>
+            <div class="stat-card"><div class="stat-icon">♡</div><p class="stat-value" id="stat-favs">۰</p><span class="stat-label">علاقه‌مندی‌ها</span></div>
+            <div class="stat-card"><div class="stat-icon">⌕</div><p class="stat-value">۱۴۲</p><span class="stat-label">بازدید پروفایل</span></div>
+            <div class="stat-card"><div class="stat-icon">✦</div><p class="stat-value">۶</p><span class="stat-label">پیام‌ها</span></div>
+        </div>
+
+        <button class="dashed-create" onclick="window.location.href='/create-ad.html'">
+            <span class="round-icon" style="width:32px;height:32px;background:var(--brand-500)">+</span>
+            ثبت آگهی جدید
+        </button>
+
+        <div class="tabs">
+            <button class="tab active">◇ آگهی‌های من</button>
+        </div>
+
+        <div id="my-listings" class="panel-grid"></div>
+    </div>
+</main>
+
+<script src="/js/api.js"></script>
+<script src="/js/auth.js"></script>
+<script src="/js/common.js"></script>
+<script>
+    function toPersianNum(n) {
+        return String(n).replace(/\d/g, d => '۰۱۲۳۴۵۶۷۸۹'[d]);
+    }
+
+    if (!requireAuth('/login.html')) {
+        // Redirect already happened — stop everything
+    } else {
+        initAuth().then(() => {
+            const user = getCurrentUser();
+            if (!user) return;
+
+            if (isBlocked()) {
+                document.querySelector('.content-narrow').innerHTML = `
+                    <div class="center-page" style="padding:40px">
+                        <div class="auth-card" style="text-align:center">
+                            <div class="success-mark" style="background:var(--danger)">!</div>
+                            <h1 style="font-size:28px;letter-spacing:-.04em">حساب شما مسدود شده است</h1>
+                            <p class="muted">حساب شما توسط مدیر سیستم مسدود شده است.</p>
+                            <button class="dark-button" onclick="doLogout()">خروج</button>
+                        </div>
+                    </div>
+                `;
+                return;
+            }
+
+            document.getElementById('user-info').innerHTML = `
+                <span class="round-icon" style="background:var(--brand-500)">${initials(user.fullName || user.username)}</span>
+                <div><strong>${esc(user.fullName || 'کاربر')}</strong><small>@${esc(user.username || '')}</small></div>
+            `;
+
+            document.getElementById('stat-favs').textContent = toPersianNum(user.favoriteAdIds?.length || 0);
+            loadMyListings();
+        });
+    }
+
+    async function loadMyListings() {
+        const grid = document.getElementById('my-listings');
+        if (typeof showLoader === 'function') showLoader(grid);
+        try {
+            const listings = await API.getMyAds();
+            renderListings(listings);
+        } catch (err) {
+            console.error(err);
+            grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1"><strong>خطا در بارگذاری</strong><p>لطفاً صفحه را refresh کنید.</p></div>';
+        }
+    }
+
+    function renderListings(listings) {
+        const grid = document.getElementById('my-listings');
+        document.getElementById('stat-ads').textContent = toPersianNum(listings.length);
+
+        if (!listings.length) {
+            grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1"><strong>هنوز آگهی‌ای ثبت نکرده‌اید</strong><p>روی دکمه بالا کلیک کنید تا اولین آگهی خود را بسازید.</p></div>';
+            return;
+        }
+
+        const statusMap = {
+            'PENDING_REVIEW': { label: 'در انتظار', class: 'pending' },
+            'ACTIVE':         { label: 'فعال', class: 'active' },
+            'SOLD':           { label: 'فروخته شده', class: 'sold' },
+            'REJECTED':       { label: 'رد شده', class: 'rejected' }
+        };
+
+        grid.innerHTML = listings.map(item => {
+            const img = item.imageUrls?.[0] || '';
+            const rawStatus = item.status || 'PENDING_REVIEW';
+            const st = statusMap[rawStatus] || { label: rawStatus, class: 'pending' };
+
+            return `
+                <article class="listing-card" onclick="window.location.href='/ad-detail.html?id=${item.id}'">
+                    <div class="image-box">
+                        ${img ? `<img class="listing-image" src="${esc(img)}" alt="${esc(item.title)}">` : '<div style="display:grid;place-items:center;height:100%;color:var(--ink-300);font-size:28px">◇</div>'}
+                        <span class="status-pill status-${st.class}">${st.label}</span>
+                    </div>
+                    <div class="listing-meta">
+                        <div class="listing-title-row">
+                            <h3 class="listing-title">${esc(item.title)}</h3>
+                            <span class="listing-price">${typeof money === 'function' ? money(item.price) : item.price + ' تومان'}</span>
+                        </div>
+                        <p class="listing-location">${esc(item.city || '')}</p>
+                        ${rawStatus === 'REJECTED' && item.rejectReason ? `<p style="margin-top:4px;color:var(--danger);font-size:11px;font-weight:700">دلیل رد: ${esc(item.rejectReason)}</p>` : ''}
+                    </div>
+                </article>
+            `;
+        }).join('');
+    }
+
+    if (typeof renderHeader === 'function') {
+        document.getElementById('header-root').innerHTML = renderHeader();
+        if (typeof attachHeaderEvents === 'function') attachHeaderEvents();
+    }
+</script>
+</body>
+</html>

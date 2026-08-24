@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Reverb — بازارچه کالاهای دست‌دوم">
+    <title>Reverb — بازارچه کالاهای دست‌دوم</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/css/style.css">
+    <meta property="og:image" content="https://bolt.new/static/og_default.png">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:image" content="https://bolt.new/static/og_default.png">
+</head>
+<body>
+<div id="header-root"></div>
+<div id="toast-region" aria-live="polite"></div>
+
+<main class="page">
+    <!-- Hero -->
+    <section class="container hero">
+        <div class="hero-copy">
+            <p class="hero-kicker"><span></span>راه بهتری برای خرید کالای دست‌دوم</p>
+            <h1>چیزهای خوب<br><em>خانه‌های جدید پیدا می‌کنند.</em></h1>
+            <p class="hero-description">کالاهای دست‌دوم با داستان را کشف کنید. خریدی آگاهانه، فروشی ساده، و زنده نگه داشتن چیزهای ارزشمند.</p>
+        </div>
+
+        <div class="search-row">
+            <div class="search-wrap">
+                <span>⌕</span>
+                <input class="search-input" id="search-input" placeholder="جستجوی هر چیزی...">
+                <button class="clear-search hidden" id="clear-search">×</button>
+            </div>
+            <button class="filter-button" id="filter-toggle">☷ فیلترها</button>
+        </div>
+
+        <div id="filter-panel" class="filter-panel hidden">
+            <div class="chip-row">
+                <span class="filter-label">دسته‌بندی</span>
+                <button class="chip selected" data-category="All">همه</button>
+            </div>
+        </div>
+    </section>
+
+    <!-- Browse -->
+    <section class="browse" id="browse">
+        <div class="container section-padding">
+            <div class="section-heading">
+                <div>
+                    <p class="eyebrow">یافته‌های تازه</p>
+                    <h2>کاوش آگهی‌ها <span id="listing-count">(۰)</span></h2>
+                </div>
+                <select class="sort-select" id="sort-select">
+                    <option value="newest">جدیدترین</option>
+                    <option value="price-low">ارزان‌ترین</option>
+                    <option value="price-high">گران‌ترین</option>
+                </select>
+            </div>
+            <div id="listings-grid" class="listings-grid"></div>
+        </div>
+    </section>
+
+    <!-- Story -->
+    <section class="container story-section" id="how-it-works">
+        <div class="story-card">
+            <div class="story-copy">
+                <p class="eyebrow" style="color:var(--brand-400)">روش Reverb</p>
+                <h2>بیشتر از یک بازارچه. فرصتی دوباره برای چیزهای خوب.</h2>
+                <p>هر کالا شایسته فصلی دیگر است. چیزهایی که دوست دارید را پیدا کنید، با مردم منطقه‌تان آشنا شوید و ردپای سبک‌تری داشته باشید.</p>
+                <a class="story-link" href="#browse">شروع کاوش ←</a>
+            </div>
+            <div class="story-visual">
+                <div class="story-note">
+                    <span style="color:var(--brand-500);font-size:26px">✦</span>
+                    <div><small>در گردش نگه دار</small><b>بخر. دوست بدار. تکرار کن.</b></div>
+                </div>
+            </div>
+        </div>
+    </section>
+</main>
+
+<div id="footer-root"></div>
+
+<script src="/js/api.js"></script>
+<script src="/js/auth.js"></script>
+<script src="/js/common.js"></script>
+<script>
+    // Inline helper (safe even if common.js is missing it)
+    function esc(v) {
+        return String(v || '').replace(/[&<>'"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]));
+    }
+
+    let state = { query: '', category: 'All', sort: 'newest', filterOpen: false, listings: [], categories: [] };
+
+    async function loadCategories() {
+        try {
+            const all = await API.getCategories();
+            // Only show subcategories (those with a parent) for search filters
+            state.categories = all.filter(c => c.parentCategoryId);
+        } catch (err) {
+            console.error('Failed to load categories:', err);
+            state.categories = [];
+        }
+        renderFilterChips();
+    }
+
+    async function loadListings() {
+        const grid = document.getElementById('listings-grid');
+        if (typeof showLoader === 'function') showLoader(grid);
+        try {
+            state.listings = await API.searchAds({
+                keyword: state.query || undefined,
+                categoryId: state.category === 'All' ? undefined : state.category
+            });
+        } catch (err) {
+            console.error('Failed to load listings:', err);
+            state.listings = [];
+        }
+        renderListings();
+    }
+
+    function renderListings() {
+        const grid = document.getElementById('listings-grid');
+        let matches = [...state.listings];
+
+        if (state.sort === 'price-low')  matches.sort((a, b) => a.price - b.price);
+        if (state.sort === 'price-high') matches.sort((a, b) => b.price - a.price);
+
+        document.getElementById('listing-count').textContent = `(${matches.length})`;
+
+        if (!matches.length) {
+            grid.innerHTML = '<div class="empty-state"><strong>آگهی‌ای یافت نشد</strong><p>جستجوی دیگری را امتحان کنید.</p></div>';
+            return;
+        }
+
+        const user = getCurrentUser();
+        grid.innerHTML = matches.map((item, i) => {
+            const img = item.imageUrls?.[0] || '';
+            const catName = state.categories.find(c => c.id === item.categoryId)?.name || item.categoryId || '';
+            const isFav = user && user.favoriteAdIds && user.favoriteAdIds.includes(item.id);
+            return `
+                <article class="listing-card" style="animation-delay:${Math.min(i*45,500)}ms" data-aid="${esc(item.id)}">
+                    <div class="image-box">
+                        ${img ? `<img class="listing-image" src="${esc(img)}" alt="${esc(item.title)}" loading="lazy">` : '<div style="display:grid;place-items:center;height:100%;color:var(--ink-300);font-size:28px">◇</div>'}
+                        <div class="image-overlay"></div>
+                        <button class="favorite-button ${isFav ? 'saved' : ''}" data-fav="${esc(item.id)}" aria-label="${isFav ? 'حذف از علاقه‌مندی' : 'ذخیره'}">${isFav ? '♥' : '♡'}</button>
+                        <span class="category-pill">◇ ${esc(catName)}</span>
+                    </div>
+                    <div class="listing-meta">
+                        <div class="listing-title-row">
+                            <h3 class="listing-title">${esc(item.title)}</h3>
+                            <span class="listing-price">${Number(item.price).toLocaleString('fa-IR')} تومان</span>
+                        </div>
+                        <p class="listing-location">${esc(item.city || '')}</p>
+                    </div>
+                </article>
+            `;
+        }).join('');
+
+        grid.querySelectorAll('.listing-card').forEach(card => {
+            card.addEventListener('click', (e) => {
+                if (e.target.closest('.favorite-button')) return;
+                window.location.href = `/ad-detail.html?id=${card.dataset.aid}`;
+            });
+        });
+
+        grid.querySelectorAll('.favorite-button').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const adId = btn.dataset.fav;
+                const me = getCurrentUser();
+                if (!me) { window.location.href = '/login.html'; return; }
+                const isFav = me.favoriteAdIds && me.favoriteAdIds.includes(adId);
+                try {
+                    if (isFav) {
+                        await API.removeFavorite(me.id, adId);
+                        me.favoriteAdIds = me.favoriteAdIds.filter(id => id !== adId);
+                    } else {
+                        await API.addFavorite(me.id, adId);
+                        me.favoriteAdIds = me.favoriteAdIds || [];
+                        me.favoriteAdIds.push(adId);
+                    }
+                    setCurrentUser(me);
+                    renderListings();
+                } catch (err) {
+                    if (typeof toast === 'function') toast(err.message || 'خطا');
+                    else alert(err.message || 'خطا');
+                }
+            });
+        });
+    }
+
+    function renderFilterChips() {
+        const panel = document.getElementById('filter-panel');
+        panel.innerHTML = `<div class="chip-row">
+            <span class="filter-label">دسته‌بندی</span>
+            <button class="chip ${state.category === 'All' ? 'selected' : ''}" data-category="All">همه</button>
+            ${state.categories.map(c => `<button class="chip ${state.category === c.id ? 'selected' : ''}" data-category="${esc(c.id)}">${esc(c.name)}</button>`).join('')}
+        </div>`;
+        panel.querySelectorAll('[data-category]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                state.category = btn.dataset.category;
+                renderFilterChips();
+                loadListings();
+            });
+        });
+    }
+
+    // Events
+    const searchInput = document.getElementById('search-input');
+    searchInput.addEventListener('input', (e) => {
+        state.query = e.target.value;
+        document.getElementById('clear-search').classList.toggle('hidden', !state.query);
+    });
+    searchInput.addEventListener('change', () => loadListings());
+
+    document.getElementById('clear-search').addEventListener('click', () => {
+        state.query = '';
+        searchInput.value = '';
+        document.getElementById('clear-search').classList.add('hidden');
+        loadListings();
+    });
+    document.getElementById('filter-toggle').addEventListener('click', () => {
+        state.filterOpen = !state.filterOpen;
+        document.getElementById('filter-panel').classList.toggle('hidden', !state.filterOpen);
+        document.getElementById('filter-toggle').classList.toggle('active', state.filterOpen);
+    });
+    document.getElementById('sort-select').addEventListener('change', (e) => {
+        state.sort = e.target.value;
+        renderListings();
+    });
+
+    // Init
+    if (typeof renderHeader === 'function') {
+        document.getElementById('header-root').innerHTML = renderHeader('home');
+        if (typeof attachHeaderEvents === 'function') attachHeaderEvents();
+    }
+    loadCategories();          // fetch categories first
+    checkAuth().then(loadListings);
+</script>
+</body>
+</html>

@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ثبت آگهی — Reverb</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div id="toast-region" aria-live="polite"></div>
+
+<main class="page">
+    <div class="topbar">
+        <div class="topbar-inner">
+            <button class="back-circle" onclick="window.location.href='/my-ads.html'">→</button>
+            <strong>ثبت آگهی جدید</strong>
+        </div>
+    </div>
+
+    <div id="create-root" class="create-content">
+        <div class="create-header">
+            <h1>ثبت آگهی جدید</h1>
+            <p>جزئیات زیر را پر کنید تا کالای شما در Reverb نمایش داده شود.</p>
+        </div>
+        <form id="create-form">
+            <section class="form-section">
+                <h2>تصاویر</h2>
+                <p>حداکثر ۸ تصویر اضافه کنید. تصویر اول، کاور آگهی خواهد بود.</p>
+                <div class="photo-grid" id="photo-grid"></div>
+            </section>
+
+            <section class="form-section">
+                <h2>جزئیات آگهی</h2>
+                <div class="form-stack" style="margin-top:18px">
+                    <div class="field">
+                        <label>عنوان *</label>
+                        <input class="form-input" name="title" placeholder="مثلاً صندلی قرمز قدیمی" required>
+                    </div>
+                    <div class="field">
+                        <label>توضیحات *</label>
+                        <textarea class="form-textarea" name="description" rows="4" placeholder="کالای خود را توصیف کنید — وضعیت، تاریخچه، چه چیزی آن را خاص می‌کند..." required></textarea>
+                    </div>
+                    <div class="field-grid">
+                        <div class="field">
+                            <label>قیمت (دلار) *</label>
+                            <input class="form-input" name="price" type="number" min="0" step="0.01" placeholder="0" required>
+                        </div>
+                        <div class="field">
+                            <label>شهر *</label>
+                            <select class="form-select" name="city" required>
+                                <option value="">انتخاب شهر</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="field">
+                        <label>دسته‌بندی *</label>
+                        <div class="category-buttons" id="category-buttons"></div>
+                    </div>
+                </div>
+            </section>
+
+            <div id="attr-section"></div>
+            <div id="form-error" class="form-error hidden"></div>
+            <button class="primary-button" type="submit" style="width:100%">انتشار آگهی</button>
+        </form>
+    </div>
+
+    <div id="success-root"></div>
+</main>
+
+<script src="/js/api.js"></script>
+<script src="/js/auth.js"></script>
+<script src="/js/common.js"></script>
+<script>
+    // --- UI metadata for known attributes (presentation layer) ---
+    const ATTR_UI = {
+        'Brand':               { label: 'برند', type: 'text' },
+        'Condition':           { label: 'وضعیت', type: 'select', options: ['نو','مانند نو','خوب','متوسط','استفاده شده'] },
+        'Model':               { label: 'مدل', type: 'text' },
+        'Storage Capacity':    { label: 'ظرفیت ذخیره‌سازی', type: 'text' },
+        'Warranty Status':     { label: 'وضعیت گارانتی', type: 'select', options: ['ندارد','کمتر از ۳ ماه','کمتر از ۶ ماه','کمتر از ۱ سال','بیش از ۱ سال'] },
+        'Year':                { label: 'سال ساخت', type: 'number' },
+        'Make':                { label: 'سازنده', type: 'text' },
+        'Mileage':             { label: 'کارکرد (کیلومتر)', type: 'number' },
+        'Transmission':        { label: 'گیربکس', type: 'select', options: ['دستی','اتوماتیک'] },
+        'Fuel Type':           { label: 'نوع سوخت', type: 'select', options: ['بنزین','گازوئیل','هیبرید','برقی'] },
+        'Material':            { label: 'جنس', type: 'text' },
+        'Dimensions':          { label: 'ابعاد', type: 'text' },
+        'Color':               { label: 'رنگ', type: 'text' },
+        'Power Source':        { label: 'منبع تغذیه', type: 'select', options: ['برق','باتری','گاز','دستی'] },
+        'Size':                { label: 'سایز', type: 'text' },
+        'Gender':              { label: 'جنسیت', type: 'select', options: ['زنانه','مردانه','بچگانه','همه'] },
+        'Sport Type':          { label: 'نوع ورزش', type: 'text' },
+        'Instrument Type':     { label: 'نوع ساز', type: 'text' },
+        'Author/Artist':       { label: 'نویسنده / هنرمند', type: 'text' },
+        'Edition':             { label: 'ویرایش / نسخه', type: 'text' },
+        'Age Group':           { label: 'رده سنی', type: 'text' },
+        'Safety Rating':       { label: 'امتیاز ایمنی', type: 'text' },
+        'Expiration Date':     { label: 'تاریخ انقضا', type: 'date' },
+        'Location/Remote':     { label: 'محل / ریموت', type: 'select', options: ['حضوری','ریموت','هر دو'] }
+    };
+
+    let images = [];
+    let selectedCategory = '';
+    let allCategories = [];
+    let selectedCategoryObj = null;
+    let isUploading = false;
+
+    // ------------------------------------------------------------------
+    // NEW: Upload a file to Spring Boot /api/upload → returns Cloudinary URL
+    // ------------------------------------------------------------------
+    async function uploadImageFile(file) {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const res = await fetch('/api/upload', {
+            method: 'POST',
+            body: formData,
+            credentials: 'include'   // JSESSIONID cookie
+            // DO NOT set Content-Type manually — browser sets it with boundary
+        });
+
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.message || 'آپلود تصویر ناموفق بود');
+        }
+        const data = await res.json();
+        return data.url;   // Cloudinary secure_url from backend
+    }
+
+    function renderPhotoGrid() {
+        const grid = document.getElementById('photo-grid');
+        grid.innerHTML = images.map((img, i) => `
+        <div class="photo-preview">
+          <img src="${esc(img.url)}" alt="${esc(img.name)}">
+          <button type="button" class="photo-remove" data-remove="${i}">×</button>
+        </div>
+      `).join('') + (images.length < 8 && !isUploading ? `
+        <label class="photo-add">+<br>افزودن تصویر
+          <input type="file" accept="image/*" multiple id="file-upload">
+        </label>
+      ` : (isUploading ? `
+        <div class="photo-add" style="opacity:0.6;cursor:wait;">
+          <span style="font-size:20px;">⏳</span>
+          <span style="font-size:11px;">در حال آپلود...</span>
+        </div>
+      ` : ''));
+
+        grid.querySelectorAll('[data-remove]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                images.splice(Number(btn.dataset.remove), 1);
+                renderPhotoGrid();
+            });
+        });
+
+        const upload = document.getElementById('file-upload');
+        if (upload) upload.addEventListener('change', handleUpload);
+    }
+
+    // ------------------------------------------------------------------
+    // FIXED: Upload to Cloudinary via /api/upload instead of base64
+    // ------------------------------------------------------------------
+    async function handleUpload(e) {
+        const files = Array.from(e.target.files || []).slice(0, 8 - images.length);
+        if (!files.length) return;
+
+        isUploading = true;
+        renderPhotoGrid(); // show loading spinner
+
+        for (const file of files) {
+            if (images.length >= 8) break;
+
+            if (!file.type.startsWith('image/')) {
+                toast('فقط فایل تصویر مجاز است: ' + file.name);
+                continue;
+            }
+            if (file.size > 5 * 1024 * 1024) {
+                toast('حداکثر حجم فایل ۵ مگابایت است: ' + file.name);
+                continue;
+            }
+
+            try {
+                const url = await uploadImageFile(file);
+                images.push({ name: file.name, url: url });
+            } catch (err) {
+                toast('آپلود ناموفق برای ' + file.name + ': ' + err.message);
+            }
+        }
+
+        isUploading = false;
+        renderPhotoGrid();
+    }
+
+    async function loadCategories() {
+        try {
+            allCategories = await API.getCategories();
+            renderCategories();
+        } catch (err) {
+            console.error('Failed to load categories:', err);
+            document.getElementById('category-buttons').innerHTML = '<p class="muted small">بارگذاری دسته‌بندی‌ها ناموفق بود.</p>';
+        }
+    }
+
+    function renderCategories() {
+        const subcategories = allCategories.filter(c => c.parentCategoryId);
+        if (!subcategories.length) {
+            document.getElementById('category-buttons').innerHTML = '<p class="muted small">دسته‌بندی‌ای یافت نشد.</p>';
+            return;
+        }
+        document.getElementById('category-buttons').innerHTML = subcategories.map(c =>
+            `<button type="button" class="category-button ${selectedCategory === c.id ? 'selected' : ''}" data-cat="${c.id}">${esc(c.name)}</button>`
+        ).join('');
+        document.querySelectorAll('[data-cat]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                selectedCategory = btn.dataset.cat;
+                selectedCategoryObj = allCategories.find(c => c.id === selectedCategory);
+                renderCategories();
+                renderAttributes();
+            });
+        });
+    }
+
+    async function renderAttributes() {
+        const section = document.getElementById('attr-section');
+        if (!selectedCategoryObj) { section.innerHTML = ''; return; }
+
+        const parentId = selectedCategoryObj.parentCategoryId || selectedCategoryObj.id;
+
+        section.innerHTML = '<p class="muted small">در حال بارگذاری ویژگی‌ها...</p>';
+        try {
+            const rules = await API.getCategoryAttributes(parentId);
+            if (!rules || !rules.length) { section.innerHTML = ''; return; }
+
+            const catName = selectedCategoryObj.name;
+            section.innerHTML = `
+            <section class="form-section">
+              <h2>جزئیات ${esc(catName)}</h2>
+              <p>ویژگی‌های خاص این دسته‌بندی.</p>
+              <div class="field-grid">
+                ${rules.map(rule => {
+                const ui = ATTR_UI[rule.attributeName] || { label: rule.attributeName, type: 'text' };
+                const fieldName = `attr-${rule.attributeName}`;
+                if (ui.type === 'select') {
+                    return `<div class="field"><label>${esc(ui.label)}${rule.required ? ' *' : ''}</label>
+                          <select class="form-select" name="${esc(fieldName)}" ${rule.required ? 'required' : ''}>
+                            <option value="">انتخاب...</option>
+                            ${ui.options.map(o => `<option>${esc(o)}</option>`).join('')}
+                          </select></div>`;
+                }
+                return `<div class="field"><label>${esc(ui.label)}${rule.required ? ' *' : ''}</label>
+                        <input class="form-input" name="${esc(fieldName)}" type="${esc(ui.type)}" ${rule.required ? 'required' : ''} placeholder="${esc(ui.label)}"></div>`;
+            }).join('')}
+              </div>
+            </section>
+          `;
+        } catch (err) {
+            console.error('Failed to load attributes:', err);
+            section.innerHTML = '<p class="muted small">بارگذاری ویژگی‌ها ناموفق بود.</p>';
+        }
+    }
+
+    function renderCities() {
+        const select = document.querySelector('select[name="city"]');
+        select.innerHTML = '<option value="">انتخاب شهر</option>' + CITIES.map(c => `<option>${esc(c)}</option>`).join('');
+    }
+
+    document.getElementById('create-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const form = new FormData(e.target);
+        const errorEl = document.getElementById('form-error');
+
+        if (!selectedCategory) { errorEl.textContent = 'دسته‌بندی را انتخاب کنید.'; errorEl.classList.remove('hidden'); return; }
+
+        const specificAttributes = {};
+        document.querySelectorAll('#attr-section [name^="attr-"]').forEach(el => {
+            const val = form.get(el.name);
+            if (val) {
+                const key = el.name.replace('attr-', '');
+                specificAttributes[key] = val;
+            }
+        });
+
+        const payload = {
+            title: form.get('title').trim(),
+            description: form.get('description').trim(),
+            price: Number(form.get('price')),
+            city: form.get('city'),
+            categoryId: selectedCategory,
+            specificAttributes,
+            imageUrls: images.map(i => i.url),
+        };
+
+        errorEl.classList.add('hidden');
+        try {
+            await API.createAd(payload);
+            document.getElementById('create-root').innerHTML = `
+              <div class="success-screen">
+                <div class="success-mark">✓</div>
+                <h1>آگهی ثبت شد!</h1>
+                <p>آگهی شما در انتظار تایید مدیر است.</p>
+              </div>
+            `;
+            setTimeout(() => window.location.href = '/my-ads.html', 1500);
+        } catch (err) {
+            errorEl.textContent = err.message || 'ثبت آگهی ناموفق بود. دوباره تلاش کنید.';
+            errorEl.classList.remove('hidden');
+        }
+    });
+
+    // Init
+    requireAuth('/login.html');
+    renderPhotoGrid();
+    renderCities();
+    loadCategories();
+    checkAuth();
+</script>
+</body>
+</html>

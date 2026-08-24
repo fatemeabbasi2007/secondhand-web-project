@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>علاقه‌مندی‌ها — Reverb</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div id="header-root"></div>
+<div id="toast-region" aria-live="polite"></div>
+
+<main class="page">
+    <div class="topbar">
+        <div class="topbar-inner">
+            <button class="back-circle" onclick="window.location.href='/index.html'">→</button>
+            <strong>علاقه‌مندی‌های من</strong>
+        </div>
+    </div>
+
+    <div class="content-narrow">
+        <div class="search-wrap" style="max-width:420px;margin-bottom:20px">
+            <span>⌕</span>
+            <input class="search-input" style="height:44px" id="fav-search" placeholder="جستجو در علاقه‌مندی‌ها...">
+        </div>
+        <div id="favorites-grid" class="panel-grid"></div>
+    </div>
+</main>
+
+<script src="/js/api.js"></script>
+<script src="/js/auth.js"></script>
+<script src="/js/common.js"></script>
+<script>
+    if (!requireAuth('/login.html')) {
+        // redirected
+    } else {
+        initAuth().then(loadFavorites);
+    }
+
+    let allFavorites = [];
+    let searchQuery = '';
+
+    async function loadFavorites() {
+        const grid = document.getElementById('favorites-grid');
+        if (typeof showLoader === 'function') showLoader(grid);
+        const user = getCurrentUser();
+        if (!user) return;
+
+        try {
+            allFavorites = await API.getFavorites(user.id);
+        } catch (err) {
+            console.error(err);
+            allFavorites = [];
+        }
+        renderFavorites();
+    }
+
+    function renderFavorites() {
+        const grid = document.getElementById('favorites-grid');
+        let matches = allFavorites;
+        if (searchQuery) {
+            const q = searchQuery.toLowerCase();
+            matches = matches.filter(l => `${l.title} ${l.city || ''}`.toLowerCase().includes(q));
+        }
+
+        if (!matches.length) {
+            grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1">
+                <strong>${searchQuery ? 'موردی یافت نشد' : 'هنوز علاقه‌مندی‌ای ندارید'}</strong>
+                <p>${searchQuery ? 'جستجوی دیگری را امتحان کنید.' : 'آیکن قلب را روی هر آگهی بزنید تا اینجا ذخیره شود.'}</p>
+            </div>`;
+            return;
+        }
+
+        // Use Bolt's listingCardHTML if available, otherwise inline fallback
+        if (typeof listingCardHTML === 'function') {
+            grid.innerHTML = matches.map((item, i) => listingCardHTML(item, i)).join('');
+            if (typeof attachFavoriteButtons === 'function') attachFavoriteButtons();
+        } else {
+            grid.innerHTML = matches.map(item => {
+                const img = item.imageUrls?.[0] || '';
+                return `
+                    <article class="listing-card" onclick="window.location.href='/ad-detail.html?id=${item.id}'">
+                        <div class="image-box">
+                            ${img ? `<img class="listing-image" src="${esc(img)}" alt="${esc(item.title)}">` : '<div style="display:grid;place-items:center;height:100%;color:var(--ink-300);font-size:28px">◇</div>'}
+                            <button class="favorite-button saved" onclick="event.stopPropagation(); removeFav('${item.id}')" aria-label="حذف از علاقه‌مندی‌ها">♥</button>
+                        </div>
+                        <div class="listing-meta">
+                            <div class="listing-title-row">
+                                <h3 class="listing-title">${esc(item.title)}</h3>
+                                <span class="listing-price">${typeof money === 'function' ? money(item.price) : item.price + ' تومان'}</span>
+                            </div>
+                            <p class="listing-location">${esc(item.city || '')}</p>
+                        </div>
+                    </article>
+                `;
+            }).join('');
+        }
+    }
+
+    async function removeFav(adId) {
+        const user = getCurrentUser();
+        if (!user) return;
+        try {
+            await API.removeFavorite(user.id, adId);
+            user.favoriteAdIds = (user.favoriteAdIds || []).filter(id => id !== adId);
+            setCurrentUser(user);
+            toast('حذف شد');
+            loadFavorites();
+        } catch (err) {
+            toast(err.message);
+        }
+    }
+
+    document.getElementById('fav-search').addEventListener('input', (e) => {
+        searchQuery = e.target.value;
+        renderFavorites();
+    });
+
+    if (typeof renderHeader === 'function') {
+        document.getElementById('header-root').innerHTML = renderHeader();
+        if (typeof attachHeaderEvents === 'function') attachHeaderEvents();
+    }
+</script>
+</body>
+</html>

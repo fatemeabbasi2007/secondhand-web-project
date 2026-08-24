@@ -1,0 +1,527 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>جزئیات آگهی — Reverb</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div id="toast-region" aria-live="polite"></div>
+
+<main class="page">
+    <div class="topbar">
+        <div class="topbar-inner">
+            <button class="back-circle" onclick="window.location.href='/index.html'">→</button>
+            <strong>جزئیات آگهی</strong>
+            <button class="outline-button" style="margin-right:auto;min-height:38px" id="fav-btn">♡ ذخیره</button>
+        </div>
+    </div>
+    <div id="detail-content"></div>
+</main>
+
+<script src="/js/api.js"></script>
+<script src="/js/auth.js"></script>
+<script src="/js/common.js"></script>
+<script>
+    // --- Persian labels for attribute names ---
+    const ATTR_UI = {
+        'Brand':               { label: 'برند', type: 'text' },
+        'Condition':           { label: 'وضعیت', type: 'select', options: ['نو','مانند نو','خوب','متوسط','استفاده شده'] },
+        'Model':               { label: 'مدل', type: 'text' },
+        'Storage Capacity':    { label: 'ظرفیت ذخیره‌سازی', type: 'text' },
+        'Warranty Status':     { label: 'وضعیت گارانتی', type: 'select', options: ['ندارد','کمتر از ۳ ماه','کمتر از ۶ ماه','کمتر از ۱ سال','بیش از ۱ سال'] },
+        'Year':                { label: 'سال ساخت', type: 'number' },
+        'Make':                { label: 'سازنده', type: 'text' },
+        'Mileage':             { label: 'کارکرد (کیلومتر)', type: 'number' },
+        'Transmission':        { label: 'گیربکس', type: 'select', options: ['دستی','اتوماتیک'] },
+        'Fuel Type':           { label: 'نوع سوخت', type: 'select', options: ['بنزین','گازوئیل','هیبرید','برقی'] },
+        'Material':            { label: 'جنس', type: 'text' },
+        'Dimensions':          { label: 'ابعاد', type: 'text' },
+        'Color':               { label: 'رنگ', type: 'text' },
+        'Power Source':        { label: 'منبع تغذیه', type: 'select', options: ['برق','باتری','گاز','دستی'] },
+        'Size':                { label: 'سایز', type: 'text' },
+        'Gender':              { label: 'جنسیت', type: 'select', options: ['زنانه','مردانه','بچگانه','همه'] },
+        'Sport Type':          { label: 'نوع ورزش', type: 'text' },
+        'Instrument Type':     { label: 'نوع ساز', type: 'text' },
+        'Author/Artist':       { label: 'نویسنده / هنرمند', type: 'text' },
+        'Edition':             { label: 'ویرایش / نسخه', type: 'text' },
+        'Age Group':           { label: 'رده سنی', type: 'text' },
+        'Safety Rating':       { label: 'امتیاز ایمنی', type: 'text' },
+        'Expiration Date':     { label: 'تاریخ انقضا', type: 'date' },
+        'Location/Remote':     { label: 'محل / ریموت', type: 'select', options: ['حضوری','ریموت','هر دو'] }
+    };
+
+    // Inline placeholder so we never 404 on a missing image
+    const PLACEHOLDER_IMG = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22400%22 height=%22300%22%3E%3Crect width=%22400%22 height=%22300%22 fill=%22%23f0f0f0%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 fill=%22%23999%22 font-family=%22sans-serif%22 font-size=%2216%22%3Eتصویری موجود نیست%3C/text%3E%3C/svg%3E';
+
+    function getUrlParam(name) {
+        return new URLSearchParams(window.location.search).get(name);
+    }
+    function formatPrice(n) {
+        return Number(n).toLocaleString('fa-IR') + ' تومان';
+    }
+
+    const adId = getUrlParam('id');
+    if (!adId) {
+        window.location.href = '/index.html';
+    }
+
+    let ad = null;
+    let reviews = [];
+    let reviewOpen = false;
+    let selectedRating = 0;
+    let editMode = false;
+    let editImages = []; // holds image URLs during editing
+
+    // ------------------------------------------------------------------
+    // NEW: Upload a file to Spring Boot /api/upload → returns Cloudinary URL
+    // ------------------------------------------------------------------
+    async function uploadImageFile(file) {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const res = await fetch('/api/upload', {
+            method: 'POST',
+            body: formData,
+            credentials: 'include'   // JSESSIONID cookie
+            // DO NOT set Content-Type manually — browser sets it with boundary
+        });
+
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.message || 'آپلود تصویر ناموفق بود');
+        }
+        const data = await res.json();
+        return data.url;   // Cloudinary secure_url from backend
+    }
+
+    async function loadAd() {
+        const container = document.getElementById('detail-content');
+        if (typeof showLoader === 'function') showLoader(container);
+        try {
+            ad = await API.getAdDetail(adId);
+            console.log('[AdDetail] Loaded ad:', ad);
+        } catch (err) {
+            alert(err.message || 'خطا در بارگذاری آگهی');
+            window.location.href = '/index.html';
+            return;
+        }
+        renderDetail();
+        loadReviews();
+    }
+
+    async function loadReviews() {
+        try {
+            if (ad && ad.ownerId) {
+                reviews = await API.getUserReviews(ad.ownerId);
+            }
+        } catch (err) {
+            reviews = [];
+        }
+        renderReviews();
+    }
+
+    function renderDetail() {
+        const user = getCurrentUser();
+        const isOwner = user && String(user.id) === String(ad.ownerId);
+
+        const favBtn = document.getElementById('fav-btn');
+        if (isOwner) {
+            favBtn.style.display = 'none';
+        } else {
+            favBtn.style.display = '';
+            const isFav = user && user.favoriteAdIds && user.favoriteAdIds.includes(ad.id);
+            favBtn.innerHTML = isFav ? '♥ ذخیره شد' : '♡ ذخیره';
+            favBtn.onclick = async () => {
+                if (!requireAuth('/login.html')) return;
+                const me = getCurrentUser();
+                try {
+                    if (isFav) {
+                        await API.removeFavorite(me.id, ad.id);
+                        me.favoriteAdIds = me.favoriteAdIds.filter(id => id !== ad.id);
+                    } else {
+                        await API.addFavorite(me.id, ad.id);
+                        me.favoriteAdIds = me.favoriteAdIds || [];
+                        me.favoriteAdIds.push(ad.id);
+                    }
+                    setCurrentUser(me);
+                    renderDetail();
+                    toast(isFav ? 'از علاقه‌مندی‌ها حذف شد' : 'به علاقه‌مندی‌ها اضافه شد');
+                } catch (err) {
+                    toast(err.message);
+                }
+            };
+        }
+
+        const container = document.getElementById('detail-content');
+        const imageUrl = ad.imageUrls && ad.imageUrls[0] ? ad.imageUrls[0] : PLACEHOLDER_IMG;
+        const categoryName = ad.categoryName || ad.categoryId || '';
+
+        let actionButtons = '';
+        if (isOwner) {
+            actionButtons = `
+                <button class="dark-button" id="edit-btn">✎ ویرایش آگهی</button>
+                <button class="outline-button" id="delete-btn" style="color:var(--danger);border-color:var(--danger);">× حذف آگهی</button>
+            `;
+        } else {
+            actionButtons = `
+                <button class="dark-button" id="message-btn">➤ ارسال پیام به فروشنده</button>
+                <button class="outline-button" id="review-btn">★ ثبت نظر</button>
+            `;
+        }
+
+        container.innerHTML = `
+        <section class="detail-main">
+          <div class="detail-grid">
+            <img class="detail-image" src="${esc(imageUrl)}" alt="${esc(ad.title)}" onerror="this.src='${PLACEHOLDER_IMG}'">
+            <div class="detail-copy">
+              <p class="detail-category">◇ ${esc(categoryName)}</p>
+              <h1>${esc(ad.title)}</h1>
+              <p class="detail-price">${formatPrice(ad.price)}</p>
+              <p class="detail-location">⌖ ${esc(ad.city || '')}</p>
+              ${isOwner ? '<p style="color:var(--success);font-size:13px;font-weight:700">● این آگهی متعلق به شماست</p>' : ''}
+              <p class="detail-description">${esc(ad.description || 'کالایی دوست‌داشتنی که به دنبال خانه‌ای جدید است.')}</p>
+
+              ${(ad.specificAttributes && ad.specificAttributes.length) ? `
+                <div style="margin-top:18px;">
+                  <p class="eyebrow" style="margin-bottom:8px;">مشخصات</p>
+                  <div style="border:1px solid var(--line);border-radius:12px;padding:12px 16px;background:var(--bg-2);">
+                    ${ad.specificAttributes.map(attr => `
+                      <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--line);">
+                        <span style="color:var(--muted);font-size:13px;">${esc(attr.label)}</span>
+                        <span style="font-weight:600;font-size:13px;">${esc(attr.value)}</span>
+                      </div>
+                    `).join('')}
+                  </div>
+                </div>
+              ` : ''}
+
+              <div class="detail-actions" style="margin-top:20px;">
+                ${actionButtons}
+              </div>
+            </div>
+          </div>
+          <section class="reviews-section">
+            <div class="reviews-head">
+              <div>
+                <p class="eyebrow">بازخورد فروشنده</p>
+                <h2>نظرات <span class="muted" id="review-count">(۰)</span></h2>
+              </div>
+              <strong class="rating" id="avg-rating">★ —</strong>
+            </div>
+            <div id="review-form-slot"></div>
+            <div class="review-grid" id="review-grid"></div>
+          </section>
+        </section>
+      `;
+
+        if (isOwner) {
+            document.getElementById('edit-btn').addEventListener('click', () => {
+                editMode = true;
+                editImages = [...(ad.imageUrls || [])];
+                renderEditForm();
+            });
+            document.getElementById('delete-btn').addEventListener('click', deleteAd);
+        } else {
+            document.getElementById('message-btn').addEventListener('click', () => {
+                if (!requireAuth('/login.html')) return;
+                const sellerName = ad.ownerUsername || ad.ownerName || 'فروشنده';
+                window.location.href = `/inbox.html?adId=${ad.id}&sellerId=${ad.ownerId}&sellerName=${encodeURIComponent(sellerName)}&adTitle=${encodeURIComponent(ad.title)}`;
+            });
+
+            document.getElementById('review-btn').addEventListener('click', () => {
+                if (!requireAuth('/login.html')) return;
+                reviewOpen = !reviewOpen;
+                const slot = document.getElementById('review-form-slot');
+                if (reviewOpen) {
+                    slot.innerHTML = renderReviewForm();
+                    attachReviewForm();
+                } else {
+                    slot.innerHTML = '';
+                }
+            });
+        }
+    }
+
+    function renderEditForm() {
+        const rules = ad.categoryRules || [];
+        const currentAttrs = ad.specificAttributes || [];
+        let attrsHtml = '';
+
+        rules.forEach(rule => {
+            const current = currentAttrs.find(a => a.label === rule.attributeName);
+            const val = current ? current.value : '';
+            const ui = ATTR_UI[rule.attributeName] || { label: rule.attributeName, type: 'text' };
+            const isReq = rule.required;
+
+            if (ui.type === 'select') {
+                attrsHtml += `
+                    <div class="field">
+                        <label>${esc(ui.label)}${isReq ? ' *' : ''}</label>
+                        <select class="form-select" name="attr-${rule.attributeName}" ${isReq ? 'required' : ''}>
+                            <option value="">انتخاب...</option>
+                            ${ui.options.map(o => `<option value="${esc(o)}" ${val === o ? 'selected' : ''}>${esc(o)}</option>`).join('')}
+                        </select>
+                    </div>`;
+            } else {
+                attrsHtml += `
+                    <div class="field">
+                        <label>${esc(ui.label)}${isReq ? ' *' : ''}</label>
+                        <input class="form-input" name="attr-${rule.attributeName}" type="${esc(ui.type)}" value="${esc(val)}" ${isReq ? 'required' : ''} placeholder="${esc(ui.label)}">
+                    </div>`;
+            }
+        });
+
+        // ------------------------------------------------------------------
+        // CHANGED: file upload instead of URL paste
+        // ------------------------------------------------------------------
+        function renderEditPhotos() {
+            const grid = document.getElementById('edit-photo-grid');
+            if (!grid) return;
+
+            grid.innerHTML = editImages.map((url, i) => `
+                <div class="photo-preview" style="position:relative;">
+                    <img src="${esc(url)}" style="width:100%;height:100%;object-fit:cover;border-radius:10px;" onerror="this.style.display='none';this.parentElement.style.background='var(--bg-2)';">
+                    <button type="button" class="photo-remove" data-remove="${i}" style="position:absolute;top:4px;right:4px;">×</button>
+                </div>
+            `).join('') + (editImages.length < 8 ? `
+                <label class="photo-add" style="flex-direction:column;gap:6px;padding:8px;text-align:center;cursor:pointer;">
+                    <span style="font-size:24px;color:var(--muted);">+</span>
+                    <span style="font-size:11px;color:var(--muted);">افزودن تصویر</span>
+                    <input type="file" id="edit-img-file" accept="image/*" style="display:none;">
+                </label>
+            ` : '');
+
+            // Remove existing photo
+            grid.querySelectorAll('[data-remove]').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    editImages.splice(Number(btn.dataset.remove), 1);
+                    renderEditPhotos();
+                });
+            });
+
+            // Upload new photo(s)
+            const fileInput = document.getElementById('edit-img-file');
+            if (fileInput) {
+                fileInput.addEventListener('change', async (e) => {
+                    const files = Array.from(e.target.files || []);
+                    if (!files.length) return;
+
+                    const label = fileInput.closest('.photo-add');
+                    if (label) {
+                        label.style.opacity = '0.6';
+                        label.style.pointerEvents = 'none';
+                    }
+
+                    try {
+                        for (const file of files) {
+                            if (editImages.length >= 8) break;
+                            if (!file.type.startsWith('image/')) {
+                                toast('فقط فایل تصویر مجاز است');
+                                continue;
+                            }
+                            if (file.size > 5 * 1024 * 1024) {
+                                toast('حداکثر حجم فایل ۵ مگابایت است');
+                                continue;
+                            }
+                            const url = await uploadImageFile(file);
+                            editImages.push(url);
+                        }
+                        renderEditPhotos();
+                    } catch (err) {
+                        toast(err.message || 'آپلود ناموفق بود');
+                    } finally {
+                        if (label) {
+                            label.style.opacity = '';
+                            label.style.pointerEvents = '';
+                        }
+                        fileInput.value = ''; // reset so same file can be chosen again
+                    }
+                });
+            }
+        }
+
+        const container = document.getElementById('detail-content');
+        container.innerHTML = `
+        <section class="detail-main" style="max-width:720px;margin:0 auto;">
+            <div class="create-header">
+                <h1>ویرایش آگهی</h1>
+                <p>تغییرات مورد نظر خود را اعمال کنید.</p>
+            </div>
+            <form id="edit-form" style="margin-top:18px;">
+                <section class="form-section">
+                    <h2>تصاویر <span class="muted" style="font-size:14px;font-weight:400;">(اختیاری)</span></h2>
+                    <div class="photo-grid" id="edit-photo-grid"></div>
+                </section>
+
+                <section class="form-section">
+                    <div class="form-stack">
+                        <div class="field">
+                            <label>دسته‌بندی <span class="muted" style="font-size:12px;">(غیرقابل تغییر)</span></label>
+                            <input class="form-input" value="${esc(ad.categoryName || ad.categoryId || '')}" disabled style="background:var(--bg-2);color:var(--muted);cursor:not-allowed;">
+                        </div>
+                        <div class="field">
+                            <label>عنوان *</label>
+                            <input class="form-input" name="title" value="${esc(ad.title)}" required>
+                        </div>
+                        <div class="field">
+                            <label>توضیحات *</label>
+                            <textarea class="form-textarea" name="description" rows="4" required>${esc(ad.description || '')}</textarea>
+                        </div>
+                        <div class="field-grid">
+                            <div class="field">
+                                <label>قیمت (دلار) *</label>
+                                <input class="form-input" name="price" type="number" min="0" step="0.01" value="${ad.price}" required>
+                            </div>
+                            <div class="field">
+                                <label>شهر *</label>
+                                <select class="form-select" name="city" required>
+                                    <option value="">انتخاب شهر</option>
+                                    ${(window.CITIES || []).map(city => `<option value="${esc(city)}" ${city === ad.city ? 'selected' : ''}>${esc(city)}</option>`).join('')}
+                                </select>
+                            </div>
+                        </div>
+                        ${attrsHtml ? `<div class="field-grid" style="margin-top:12px;">${attrsHtml}</div>` : ''}
+                    </div>
+                </section>
+                <div id="edit-error" class="form-error hidden"></div>
+                <div class="detail-actions" style="margin-top:24px;">
+                    <button class="primary-button" type="submit">✓ ذخیره تغییرات</button>
+                    <button class="outline-button" type="button" id="cancel-edit">لغو</button>
+                </div>
+            </form>
+        </section>
+        `;
+
+        renderEditPhotos();
+
+        document.getElementById('edit-form').addEventListener('submit', saveEdit);
+        document.getElementById('cancel-edit').addEventListener('click', () => {
+            editMode = false;
+            renderDetail();
+        });
+    }
+
+    async function saveEdit(e) {
+        e.preventDefault();
+        const form = new FormData(e.target);
+        const errorEl = document.getElementById('edit-error');
+
+        const specificAttributes = {};
+        (ad.categoryRules || []).forEach(rule => {
+            const val = form.get(`attr-${rule.attributeName}`);
+            if (val !== null && val !== undefined) {
+                specificAttributes[rule.attributeName] = val;
+            }
+        });
+
+        const payload = {
+            id: ad.id,
+            title: form.get('title').trim(),
+            description: form.get('description').trim(),
+            price: Number(form.get('price')),
+            city: form.get('city'),
+            categoryId: ad.categoryId,
+            imageUrls: editImages,
+            specificAttributes: specificAttributes
+        };
+
+        console.log('[AdDetail] Edit payload:', payload);
+
+        errorEl.classList.add('hidden');
+        try {
+            await API.updateOwnAd(ad.id, payload);
+            toast('آگهی با موفقیت به‌روزرسانی شد');
+            editMode = false;
+            await loadAd();
+        } catch (err) {
+            errorEl.textContent = err.message || 'ویرایش ناموفق بود. دوباره تلاش کنید.';
+            errorEl.classList.remove('hidden');
+        }
+    }
+
+    async function deleteAd() {
+        if (!confirm('آیا از حذف این آگهی مطمئن هستید؟')) return;
+        try {
+            await API.deleteOwnAd(ad.id);
+            toast('آگهی حذف شد');
+            setTimeout(() => window.location.href = '/my-ads.html', 800);
+        } catch (err) {
+            toast(err.message || 'حذف ناموفق بود');
+        }
+    }
+
+    function renderReviewForm() {
+        return `
+        <form class="review-form" id="review-form">
+          <strong>تجربه شما چگونه بود؟</strong>
+          <div class="stars" id="stars">
+            ${[1,2,3,4,5].map(v => `<button type="button" class="star-button" data-rating="${v}">☆</button>`).join('')}
+          </div>
+          <textarea class="form-textarea" name="comment" rows="4" minlength="3" placeholder="چند کلمه درباره فروشنده بنویسید..." required></textarea>
+          <p class="form-error hidden" id="review-error"></p>
+          <button class="primary-button" type="submit" style="margin-top:12px">➤ ثبت نظر</button>
+        </form>
+      `;
+    }
+
+    function attachReviewForm() {
+        const form = document.getElementById('review-form');
+        form.querySelectorAll('[data-rating]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                selectedRating = Number(btn.dataset.rating);
+                form.querySelectorAll('[data-rating]').forEach(b => {
+                    b.textContent = Number(b.dataset.rating) <= selectedRating ? '★' : '☆';
+                });
+            });
+        });
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const comment = new FormData(form).get('comment').trim();
+            const errorEl = document.getElementById('review-error');
+            if (!selectedRating || comment.length < 3) {
+                errorEl.textContent = 'امتیاز بدهید و حداقل ۳ کاراکتر بنویسید.';
+                errorEl.classList.remove('hidden');
+                return;
+            }
+            try {
+                await API.submitReview(ad.id, { score: selectedRating, comment });
+                toast('نظر شما ثبت شد');
+                reviewOpen = false;
+                document.getElementById('review-form-slot').innerHTML = '';
+                loadReviews();
+            } catch (err) {
+                errorEl.textContent = err.message || 'ثبت نظر ناموفق بود.';
+                errorEl.classList.remove('hidden');
+            }
+        });
+    }
+
+    function renderReviews() {
+        const grid = document.getElementById('review-grid');
+        const countEl = document.getElementById('review-count');
+        const avgEl = document.getElementById('avg-rating');
+        countEl.textContent = `(${reviews.length})`;
+        const avg = reviews.length ? (reviews.reduce((s, r) => s + (r.score || r.rating), 0) / reviews.length).toFixed(1) : '—';
+        avgEl.textContent = `★ ${avg}`;
+        grid.innerHTML = reviews.length
+            ? reviews.map(r => `
+          <article class="review-card">
+            <div class="review-card-head">
+              <strong>${esc(r.reviewerName || r.reviewer_name || 'کاربر')}</strong>
+              <span class="rating">${'★'.repeat(r.score || r.rating)}${'☆'.repeat(5 - (r.score || r.rating))}</span>
+            </div>
+            <p>${esc(r.comment)}</p>
+          </article>
+        `).join('')
+            : '<p class="muted" style="margin-top:32px;text-align:center">هنوز نظری ثبت نشده. اولین نفر باشید!</p>';
+    }
+
+    checkAuth().then(loadAd);
+</script>
+</body>
+</html>

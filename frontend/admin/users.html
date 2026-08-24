@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>مدیریت کاربران — پنل مدیریت Reverb</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div id="header-root"></div>
+<div id="toast-region" aria-live="polite"></div>
+
+<main class="page">
+    <div class="topbar">
+        <div class="topbar-inner">
+            <button class="back-circle" onclick="window.location.href='/index.html'">→</button>
+            <div class="topbar-title">
+                <span class="round-icon">▣</span>
+                <div><strong>پنل مدیریت</strong><small>مدیریت کاربران</small></div>
+            </div>
+            <div style="margin-right:auto;display:flex;gap:8px">
+                <a class="outline-button" style="min-height:36px" href="/admin/pending-ads.html">◷ در انتظار</a>
+                <a class="outline-button" style="min-height:36px" href="/admin/users.html">♙ کاربران</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="content-narrow">
+        <div class="stats-grid" style="grid-template-columns:repeat(3,1fr)">
+            <div class="stat-card"><div class="stat-icon">◷</div><p class="stat-value" id="stat-pending">۰</p><span class="stat-label">در انتظار</span></div>
+            <div class="stat-card"><div class="stat-icon">✓</div><p class="stat-value" id="stat-active">۰</p><span class="stat-label">فعال</span></div>
+            <div class="stat-card"><div class="stat-icon">♙</div><p class="stat-value" id="stat-users">۰</p><span class="stat-label">کاربران</span></div>
+        </div>
+
+        <div class="search-wrap" style="max-width:420px;margin-bottom:20px">
+            <span>⌕</span>
+            <input class="search-input" style="height:44px" id="user-search" placeholder="جستجوی کاربر...">
+        </div>
+
+        <div id="users-content"></div>
+    </div>
+</main>
+
+<script src="/js/api.js"></script>
+<script src="/js/auth.js"></script>
+<script src="/js/common.js"></script>
+<script>
+    if (!requireAdmin()) {
+        // redirected by requireAdmin
+    } else {
+        initAuth().then(loadData);
+    }
+
+    let users = [];
+    let searchQuery = '';
+
+    async function loadData() {
+        const content = document.getElementById('users-content');
+        if (typeof showLoader === 'function') showLoader(content);
+
+        try {
+            const [pending, active, usersData] = await Promise.all([
+                API.getPendingAds(),
+                API.getActiveAds(),
+                API.getAllUsers()
+            ]);
+            users = usersData;
+            document.getElementById('stat-pending').textContent = pending.length;
+            document.getElementById('stat-active').textContent = active.length;
+            document.getElementById('stat-users').textContent = users.length;
+        } catch (err) {
+            console.error(err);
+            toast('خطا در بارگذاری داده‌ها');
+            users = [];
+        }
+        renderUsers();
+    }
+
+    function renderUsers() {
+        const content = document.getElementById('users-content');
+        let matches = users;
+        if (searchQuery) {
+            const q = searchQuery.toLowerCase();
+            matches = users.filter(u =>
+                (u.fullName || u.full_name || '').toLowerCase().includes(q) ||
+                (u.username || '').toLowerCase().includes(q) ||
+                (u.phoneNum || u.phone || '').toLowerCase().includes(q)
+            );
+        }
+
+        if (!matches.length) {
+            content.innerHTML = '<div class="empty-state"><strong>کاربری یافت نشد</strong></div>';
+            return;
+        }
+
+        content.innerHTML = matches.map(user => {
+            const fullName = user.fullName || user.full_name || 'کاربر';
+            const username = user.username || '';
+            const phone = user.phoneNum || user.phone || '';
+            const email = user.email || '';
+            const blocked = user.enabled === false || user.isBlocked || user.is_blocked || false;
+            const userId = user.id;
+            return `
+                <div class="user-row">
+                    <span class="avatar">${initials(fullName)}</span>
+                    <div class="user-row-copy">
+                        <strong>${esc(fullName)}${blocked ? '<span class="blocked-label">مسدود</span>' : ''}</strong>
+                        <p>@${esc(username)} · ${esc(phone)}${email ? ' · ' + esc(email) : ''}</p>
+                    </div>
+                    ${blocked
+                ? `<button class="action-button success" data-action="unblock" data-id="${esc(userId)}">رفع مسدودی</button>`
+                : `<button class="action-button danger" data-action="block" data-id="${esc(userId)}">مسدود کردن</button>`
+            }
+                </div>
+            `;
+        }).join('');
+
+        content.querySelectorAll('[data-action]').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const action = btn.dataset.action;
+                const userId = btn.dataset.id;
+                const user = users.find(u => String(u.id) === String(userId));
+                if (!user) return;
+
+                if (action === 'block') {
+                    try {
+                        await API.blockUser(userId);
+                        user.enabled = false;
+                        toast('کاربر مسدود شد');
+                        renderUsers();
+                    } catch (err) {
+                        toast(err.message || 'عملیات ناموفق بود');
+                    }
+                } else if (action === 'unblock') {
+                    try {
+                        await API.unblockUser(userId);
+                        user.enabled = true;
+                        toast('مسدودی کاربر رفع شد');
+                        renderUsers();
+                    } catch (err) {
+                        toast(err.message || 'عملیات ناموفق بود');
+                    }
+                }
+            });
+        });
+    }
+
+    document.getElementById('user-search').addEventListener('input', (e) => {
+        searchQuery = e.target.value;
+        renderUsers();
+    });
+
+    if (typeof renderHeader === 'function') {
+        document.getElementById('header-root').innerHTML = renderHeader();
+        if (typeof attachHeaderEvents === 'function') attachHeaderEvents();
+    }
+</script>
+</body>
+</html>

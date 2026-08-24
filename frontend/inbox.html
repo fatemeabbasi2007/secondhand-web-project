@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>صندوق پیام‌ها — Reverb</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div id="header-root"></div>
+<div id="toast-region" aria-live="polite"></div>
+
+<main class="page">
+    <div class="inbox-layout" id="inbox-layout">
+        <aside class="chat-list">
+            <div class="chat-list-head">
+                <h1>پیام‌ها</h1>
+                <input class="chat-search" id="chat-search" placeholder="جستجوی گفتگو..." style="margin-top:12px">
+            </div>
+            <div class="chat-rows" id="chat-rows"></div>
+        </aside>
+
+        <section class="conversation">
+            <div class="conversation-head" id="conv-head"></div>
+            <div class="message-stream">
+                <div class="message-inner" id="message-inner"></div>
+            </div>
+            <form class="composer" id="message-form">
+                <textarea name="message" id="message-input" placeholder="پیام بنویسید..."></textarea>
+                <button class="send-button" type="submit" aria-label="ارسال">➤</button>
+            </form>
+        </section>
+    </div>
+</main>
+
+<script src="/js/api.js"></script>
+<script src="/js/auth.js"></script>
+<script src="/js/common.js"></script>
+<script>
+    if (!requireAuth('/login.html')) {
+        // redirected
+    } else {
+        initAuth().then(loadInbox);
+    }
+
+    let conversations = [];
+    let activeConvId = null;
+    let searchQuery = '';
+
+    async function loadInbox() {
+        const rowsEl = document.getElementById('chat-rows');
+        rowsEl.innerHTML = '<div style="padding:40px;text-align:center;color:var(--muted)">در حال بارگذاری...</div>';
+
+        const prevActiveId = activeConvId;
+
+        try {
+            const raw = await API.getConversations();
+            console.log('[Inbox] Conversations API raw:', raw);
+
+            conversations = (raw || []).map(c => ({
+                id: c.conversationId || c.id,
+                advertisementId: c.advertisementId || c.adId || c.advertisement_id,
+                name: c.otherPartyName || c.otherUserName || c.otherUsername || c.buyerName || c.sellerName || c.name || 'کاربر',
+                initials: initials(c.otherPartyName || c.otherUserName || c.name || 'کاربر'),
+                product: c.adTitle || c.product || c.advertisementTitle || c.title || '',
+                lastMessage: c.lastMessagePreview || c.lastMessage || c.lastMessageText || c.last_message || '',
+                lastMessageTime: c.lastMessageAt || c.lastMessageTime || c.updatedAt || c.createdAt || '',
+                unread: c.unreadCount || c.unread || 0,
+                messages: null,
+                _loaded: false
+            }));
+
+            // Preserve active conversation if it still exists on server
+            if (prevActiveId && conversations.find(c => c.id === prevActiveId)) {
+                activeConvId = prevActiveId;
+            } else if (conversations.length && !activeConvId) {
+                activeConvId = conversations[0].id;
+            }
+        } catch (err) {
+            console.error('[Inbox] loadInbox ERROR:', err);
+            toast('خطا در بارگذاری گفتگوها');
+            conversations = [];
+        }
+
+        handleNewChatRedirect();
+        renderChatList();
+        renderConversation();
+    }
+
+    function handleNewChatRedirect() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const adId = urlParams.get('adId');
+        const sellerName = urlParams.get('sellerName');
+        const adTitle = urlParams.get('adTitle');
+
+        if (!adId) return;
+
+        const existing = conversations.find(c => c.advertisementId === adId);
+        if (existing) {
+            activeConvId = existing.id;
+        } else {
+            const me = getCurrentUser();
+            const newConv = {
+                id: me.id + '_' + adId,          // matches backend format: buyerId_adId
+                advertisementId: adId,
+                name: decodeURIComponent(sellerName || 'فروشنده'),
+                initials: initials(decodeURIComponent(sellerName || 'فروشنده')),
+                product: decodeURIComponent(adTitle || ''),
+                lastMessage: '',
+                lastMessageTime: '',
+                unread: 0,
+                messages: [],
+                _loaded: true                     // don't try to fetch from server (doesn't exist yet)
+            };
+            conversations.push(newConv);
+            activeConvId = newConv.id;
+        }
+        // Clean the URL so refreshing doesn't recreate the placeholder
+        window.history.replaceState({}, '', '/inbox.html');
+    }
+
+    function renderChatList() {
+        const rowsEl = document.getElementById('chat-rows');
+        let matches = conversations;
+        if (searchQuery) {
+            const q = searchQuery.toLowerCase();
+            matches = conversations.filter(c =>
+                (c.name || '').toLowerCase().includes(q) ||
+                (c.lastMessage || '').toLowerCase().includes(q) ||
+                (c.product || '').toLowerCase().includes(q)
+            );
+        }
+
+        rowsEl.innerHTML = matches.length ? matches.map(c => `
+            <button class="chat-row ${c.id === activeConvId ? 'active' : ''}" data-cid="${c.id}">
+                <span class="chat-avatar">${esc(c.initials)}</span>
+                <span class="chat-preview">
+                    <strong>${esc(c.name)}</strong>
+                    <p>${esc(c.lastMessage)}</p>
+                </span>
+                <span class="chat-time">${esc(c.lastMessageTime)}</span>
+            </button>
+        `).join('') : '<div style="padding:40px 20px;text-align:center;color:var(--ink-400);font-size:13px">گفتگویی یافت نشد</div>';
+
+        rowsEl.querySelectorAll('[data-cid]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                activeConvId = btn.dataset.cid;
+                document.getElementById('inbox-layout').classList.add('mobile-conversation');
+                renderChatList();
+                renderConversation();
+            });
+        });
+    }
+
+    async function renderConversation() {
+        const chat = conversations.find(c => c.id === activeConvId);
+        const headEl = document.getElementById('conv-head');
+        const innerEl = document.getElementById('message-inner');
+        const input = document.getElementById('message-input');
+
+        if (!chat) {
+            headEl.innerHTML = '';
+            innerEl.innerHTML = '<p class="muted" style="text-align:center;margin-top:40px">گفتگویی انتخاب کنید</p>';
+            if (input) { input.disabled = true; input.placeholder = 'گفتگویی انتخاب کنید...'; }
+            return;
+        }
+
+        if (input) { input.disabled = false; input.placeholder = 'پیام بنویسید...'; }
+
+        // Always fetch messages when selecting a conversation (force refresh)
+        if (!chat._loaded) {
+            innerEl.innerHTML = '<p style="text-align:center;padding:40px;color:var(--muted)">در حال بارگذاری پیام‌ها...</p>';
+            try {
+                const msgs = await API.getChatMessages(chat.id);
+                console.log('[Inbox] Raw messages for', chat.id, ':', msgs);
+
+                const me = getCurrentUser();
+                console.log('[Inbox] Current user ID:', me?.id);
+
+                chat.messages = (msgs || []).map((m, idx) => {
+                    const senderId = m.senderId || m.sender_id || m.sender;
+                    const isMe = me && String(me.id) === String(senderId);
+                    const text = m.content || m.text || m.message || '';
+                    const time = m.sentAt || m.createdAt || m.timestamp || m.time || '';
+
+                    console.log(`[Inbox] Msg ${idx}: senderId=${senderId}, isMe=${isMe}, text=${text}, time=${time}`);
+
+                    return {
+                        id: m.id || idx,
+                        sender: isMe ? 'me' : 'them',
+                        text: text,
+                        time: time
+                    };
+                });
+
+                chat._loaded = true;
+            } catch (err) {
+                console.error('[Inbox] Failed to load messages:', err);
+                chat.messages = [];
+                chat._loaded = true;
+            }
+        }
+
+        headEl.innerHTML = `
+            <button class="back-circle" onclick="document.getElementById('inbox-layout').classList.remove('mobile-conversation')">→</button>
+            <span class="chat-avatar">${esc(chat.initials)}</span>
+            <div class="conversation-head-copy">
+                <strong>${esc(chat.name)}</strong>
+                <p>◇ ${esc(chat.product)} · <span style="color:var(--success)">● آنلاین</span></p>
+            </div>
+        `;
+
+        const msgs = chat.messages || [];
+        let msgsHtml = '';
+        if (msgs.length === 0) {
+            msgsHtml = '<p style="text-align:center;padding:40px;color:var(--muted)">هنوز پیامی در این گفتگو وجود ندارد. اولین پیام را بنویسید!</p>';
+        } else {
+            msgsHtml = msgs.map(m => `
+                <div class="message ${m.sender === 'me' ? 'mine' : ''}">
+                    <div>
+                        <div class="message-bubble">${esc(m.text)}</div>
+                        <p class="message-time">${esc(m.time)}</p>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        innerEl.innerHTML = `
+            <span class="about-chip">درباره: ${esc(chat.product)}</span>
+            ${msgsHtml}
+        `;
+
+        const stream = innerEl.parentElement;
+        if (stream) stream.scrollTop = stream.scrollHeight;
+    }
+
+    document.getElementById('message-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const input = document.getElementById('message-input');
+        const text = input.value.trim();
+        if (!text) return;
+
+        const chat = conversations.find(c => c.id === activeConvId);
+        if (!chat) { toast('گفتگویی انتخاب نشده'); return; }
+
+        // Optimistic UI
+        chat.messages = chat.messages || [];
+        chat.messages.push({ id: Date.now(), sender: 'me', text, time: 'اکنون' });
+        chat.lastMessage = text;
+        chat.lastMessageTime = 'اکنون';
+        input.value = '';
+        renderChatList();
+        renderConversation();
+
+        try {
+            await API.sendMessage(chat.advertisementId, { content: text });
+            console.log('[Inbox] Message sent');
+            // Refresh from server after a short delay to get real timestamps
+            setTimeout(() => {
+                chat._loaded = false;
+                renderConversation();
+            }, 400);
+        } catch (err) {
+            console.error('[Inbox] Send failed:', err);
+            toast(err.message || 'ارسال پیام ناموفق بود');
+        }
+    });
+
+    document.getElementById('chat-search').addEventListener('input', (e) => {
+        searchQuery = e.target.value;
+        renderChatList();
+    });
+
+    if (typeof renderHeader === 'function') {
+        document.getElementById('header-root').innerHTML = renderHeader('inbox');
+        if (typeof attachHeaderEvents === 'function') attachHeaderEvents();
+    }
+</script>
+</body>
+</html>

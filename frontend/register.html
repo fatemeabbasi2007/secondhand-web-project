@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ثبت‌نام — Reverb</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div id="toast-region" aria-live="polite"></div>
+
+<main class="center-page">
+    <div class="auth-card">
+        <button class="back-button" onclick="window.location.href='/index.html'">→ بازگشت به خانه</button>
+        <div class="auth-brand">
+            <span class="logo-mark">✦</span>
+            <h1>ساخت حساب کاربری</h1>
+            <p>به بازارچه Reverb بپیوندید</p>
+        </div>
+        <form class="form-stack" id="register-form">
+            <div class="field">
+                <label>نام و نام خانوادگی</label>
+                <input class="form-input" name="fullName" type="text" placeholder="مثلاً علی رضایی" autocomplete="name" required>
+            </div>
+            <div class="field">
+                <label>نام کاربری</label>
+                <input class="form-input" name="username" type="text" placeholder="نام کاربری شما" autocomplete="username" required>
+            </div>
+            <div class="field">
+                <label>رمز عبور</label>
+                <div class="input-with-icon">
+                    <span class="input-icon">▣</span>
+                    <input class="form-input" name="password" type="password" placeholder="حداقل ۶ کاراکتر" autocomplete="new-password" required>
+                    <button type="button" class="password-toggle" id="pw-toggle">◉</button>
+                </div>
+            </div>
+            <div class="field">
+                <label>شماره تلفن</label>
+                <input class="form-input" name="phone" type="tel" placeholder="۰۹۱۲۳۴۵۶۷۸۹" autocomplete="tel" required>
+            </div>
+            <div class="field">
+                <label>ایمیل (اختیاری)</label>
+                <input class="form-input" name="email" type="email" placeholder="example@email.com" autocomplete="email">
+            </div>
+            <div id="form-error" class="form-error hidden"></div>
+            <button class="primary-button" type="submit" id="submit-btn">ساخت حساب</button>
+        </form>
+        <p class="auth-switch">قبلاً حساب دارید؟ <a class="text-button" href="/login.html">وارد شوید</a></p>
+    </div>
+</main>
+
+<script src="/js/api.js"></script>
+<script src="/js/auth.js"></script>
+<script src="/js/common.js"></script>
+<script>
+    document.getElementById('pw-toggle').addEventListener('click', () => {
+        const input = document.querySelector('input[name="password"]');
+        input.type = input.type === 'password' ? 'text' : 'password';
+    });
+
+    document.getElementById('register-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const form = new FormData(e.target);
+        const fullName = form.get('fullName').trim();
+        const username = form.get('username').trim();
+        const password = form.get('password');
+        const phone    = form.get('phone').trim();
+        const email    = form.get('email').trim();
+        const errorEl  = document.getElementById('form-error');
+        const btn      = document.getElementById('submit-btn');
+
+        if (!fullName || !username || !password || !phone) {
+            errorEl.textContent = 'لطفاً همه فیلدهای ضروری را پر کنید.';
+            errorEl.classList.remove('hidden');
+            return;
+        }
+        if (password.length < 6) {
+            errorEl.textContent = 'رمز عبور باید حداقل ۶ کاراکتر باشد.';
+            errorEl.classList.remove('hidden');
+            return;
+        }
+
+        errorEl.classList.add('hidden');
+        btn.disabled = true;
+        btn.textContent = 'لطفاً صبر کنید...';
+
+        try {
+            // Backend expects phoneNum, not phone
+            await API.register({
+                username,
+                password,
+                email: email || null,
+                phoneNum: phone,
+                fullName
+            });
+
+            // Auto-login after register for smooth UX
+            const user = await API.login(username, password);
+            setCurrentUser(user);
+
+            toast('حساب شما ساخته شد!');
+            setTimeout(() => window.location.href = '/index.html', 800);
+        } catch (err) {
+            errorEl.textContent = err.message || 'خطا در ثبت‌نام. لطفاً دوباره تلاش کنید.';
+            errorEl.classList.remove('hidden');
+            btn.disabled = false;
+            btn.textContent = 'ساخت حساب';
+        }
+    });
+</script>
+</body>
+</html>

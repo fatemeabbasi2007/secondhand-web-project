@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ورود — Reverb</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div id="toast-region" aria-live="polite"></div>
+
+<main class="center-page">
+    <div class="auth-card">
+        <button class="back-button" onclick="window.location.href='/index.html'">→ بازگشت به خانه</button>
+        <div class="auth-brand">
+            <span class="logo-mark">✦</span>
+            <h1>خوش آمدید</h1>
+            <p>برای ادامه وارد شوید</p>
+        </div>
+        <form class="form-stack" id="login-form">
+            <div class="field">
+                <label>نام کاربری</label>
+                <input class="form-input" name="username" type="text" placeholder="نام کاربری شما" autocomplete="username" required>
+            </div>
+            <div class="field">
+                <label>رمز عبور</label>
+                <div class="input-with-icon">
+                    <span class="input-icon">▣</span>
+                    <input class="form-input" name="password" type="password" placeholder="رمز عبور" autocomplete="current-password" required>
+                    <button type="button" class="password-toggle" id="pw-toggle">◉</button>
+                </div>
+            </div>
+            <div id="form-error" class="form-error hidden"></div>
+            <button class="primary-button" type="submit" id="submit-btn">ورود</button>
+        </form>
+        <p class="auth-switch">حساب کاربری ندارید؟ <a class="text-button" href="/register.html">ثبت‌نام کنید</a></p>
+    </div>
+</main>
+
+<script src="/js/api.js"></script>
+<script src="/js/auth.js"></script>
+<script src="/js/common.js"></script>
+<script>
+    document.getElementById('pw-toggle').addEventListener('click', () => {
+        const input = document.querySelector('input[name="password"]');
+        input.type = input.type === 'password' ? 'text' : 'password';
+    });
+
+    document.getElementById('login-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const form = new FormData(e.target);
+        const username = form.get('username').trim();
+        const password = form.get('password');
+        const errorEl = document.getElementById('form-error');
+        const btn = document.getElementById('submit-btn');
+
+        if (!username || !password) {
+            errorEl.textContent = 'نام کاربری و رمز عبور را وارد کنید.';
+            errorEl.classList.remove('hidden');
+            return;
+        }
+
+        errorEl.classList.add('hidden');
+        btn.disabled = true;
+        btn.textContent = 'لطفاً صبر کنید...';
+
+        try {
+            // Session cookie auth: backend returns User object directly, no token
+            const user = await API.login(username, password);
+            setCurrentUser(user); // cache for navbar
+
+            const redirect = new URLSearchParams(window.location.search).get('redirect');
+            window.location.href = redirect ? '/' + redirect : '/index.html';
+        } catch (err) {
+            errorEl.textContent = err.message || 'نام کاربری یا رمز عبور نادرست است.';
+            errorEl.classList.remove('hidden');
+            btn.disabled = false;
+            btn.textContent = 'ورود';
+        }
+    });
+</script>
+</body>
+</html>

@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>آگهی‌های در انتظار — پنل مدیریت Reverb</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div id="header-root"></div>
+<div id="toast-region" aria-live="polite"></div>
+
+<main class="page">
+    <div class="topbar">
+        <div class="topbar-inner">
+            <button class="back-circle" onclick="window.location.href='/index.html'">→</button>
+            <div class="topbar-title">
+                <span class="round-icon">▣</span>
+                <div><strong>پنل مدیریت</strong><small>مدیریت آگهی‌ها</small></div>
+            </div>
+            <div style="margin-right:auto;display:flex;gap:8px">
+                <a class="outline-button" style="min-height:36px" href="/admin/pending-ads.html">◷ در انتظار</a>
+                <a class="outline-button" style="min-height:36px" href="/admin/users.html">♙ کاربران</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="content-narrow">
+        <div class="stats-grid" style="grid-template-columns:repeat(3,1fr)">
+            <div class="stat-card"><div class="stat-icon">◷</div><p class="stat-value" id="stat-pending">۰</p><span class="stat-label">در انتظار</span></div>
+            <div class="stat-card"><div class="stat-icon">✓</div><p class="stat-value" id="stat-active">۰</p><span class="stat-label">فعال</span></div>
+            <div class="stat-card"><div class="stat-icon">♙</div><p class="stat-value" id="stat-users">۰</p><span class="stat-label">کاربران</span></div>
+        </div>
+
+        <div class="tabs">
+            <button class="tab active" data-tab="pending">◷ در انتظار تایید <span class="tab-badge" id="pending-badge">۰</span></button>
+            <button class="tab" data-tab="active">✓ آگهی‌های فعال</button>
+        </div>
+
+        <div id="admin-content"></div>
+    </div>
+</main>
+
+<script src="/js/api.js"></script>
+<script src="/js/auth.js"></script>
+<script src="/js/common.js"></script>
+<script>
+    if (!requireAdmin()) {
+        // redirected
+    } else {
+        initAuth().then(loadData);
+    }
+
+    let currentTab = 'pending';
+    let pendingList = [];
+    let activeList = [];
+
+    async function loadData() {
+        const content = document.getElementById('admin-content');
+        if (typeof showLoader === 'function') showLoader(content);
+
+        try {
+            const [pending, active, users] = await Promise.all([
+                API.getPendingAds(),
+                API.getActiveAds(),
+                API.getAllUsers()
+            ]);
+            pendingList = pending;
+            activeList = active;
+            document.getElementById('stat-pending').textContent = pending.length;
+            document.getElementById('stat-active').textContent = active.length;
+            document.getElementById('stat-users').textContent = users.length;
+            document.getElementById('pending-badge').textContent = pending.length;
+        } catch (err) {
+            console.error(err);
+            toast('خطا در بارگذاری داده‌ها');
+            pendingList = [];
+            activeList = [];
+        }
+        renderTab();
+    }
+
+    function renderTab() {
+        const content = document.getElementById('admin-content');
+        const list = currentTab === 'pending' ? pendingList : activeList;
+
+        if (!list.length) {
+            content.innerHTML = `<div class="empty-state"><strong>${currentTab === 'pending' ? 'آگهی در انتظاری نیست' : 'آگهی فعالی وجود ندارد'}</strong><p>${currentTab === 'pending' ? 'همه چیز مرتب است.' : ''}</p></div>`;
+            return;
+        }
+
+        content.innerHTML = list.map(item => {
+            const img = item.imageUrls?.[0] || '';
+            const ownerName = item.ownerName || item.ownerFullName || item.profiles?.fullName || item.profiles?.full_name || 'نامشخص';
+            const categoryName = item.categoryId || '';
+            return `
+                <article class="admin-card">
+                    <div class="admin-listing">
+                        ${img ? `<img class="admin-thumb" src="${esc(img)}" alt="">` : '<div class="admin-thumb"></div>'}
+                        <div class="admin-listing-copy">
+                            <h3>${esc(item.title)} <span class="muted">${typeof money === 'function' ? money(item.price) : item.price + ' تومان'}</span></h3>
+                            <p>توسط ${esc(ownerName)} · ${esc(categoryName)} · ${esc(item.city || '')}</p>
+                            <p>${esc(item.description || '')}</p>
+                        </div>
+                    </div>
+                    <div class="admin-actions">
+                        ${currentTab === 'pending'
+                ? `<button class="action-button success" data-action="approve" data-id="${item.id}">✓ تایید</button>
+                               <button class="action-button danger" data-action="decline" data-id="${item.id}">× رد کردن</button>`
+                : `<button class="action-button danger" data-action="remove" data-id="${item.id}">× حذف آگهی</button>`
+            }
+                    </div>
+                </article>
+            `;
+        }).join('');
+        attachAdminActions();
+    }
+
+    function attachAdminActions() {
+        document.querySelectorAll('[data-action]').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const action = btn.dataset.action;
+                const id = btn.dataset.id;
+
+                if (action === 'decline') {
+                    const reason = prompt('دلیل رد شدن را وارد کنید:');
+                    if (!reason) return;
+                    try {
+                        await API.rejectAd(id, reason);
+                        toast('آگهی رد شد');
+                        pendingList = pendingList.filter(l => l.id !== id);
+                        document.getElementById('stat-pending').textContent = pendingList.length;
+                        document.getElementById('pending-badge').textContent = pendingList.length;
+                        renderTab();
+                    } catch (err) {
+                        toast(err.message || 'عملیات ناموفق بود');
+                    }
+                } else if (action === 'approve') {
+                    try {
+                        await API.approveAd(id);
+                        toast('آگهی تایید شد');
+                        const item = pendingList.find(l => l.id === id);
+                        if (item) {
+                            item.status = 'approved';
+                            activeList.unshift(item);
+                        }
+                        pendingList = pendingList.filter(l => l.id !== id);
+                        document.getElementById('stat-pending').textContent = pendingList.length;
+                        document.getElementById('pending-badge').textContent = pendingList.length;
+                        renderTab();
+                    } catch (err) {
+                        toast(err.message || 'عملیات ناموفق بود');
+                    }
+                } else if (action === 'remove') {
+                    if (!confirm('آیا از حذف این آگهی مطمئن هستید؟')) return;
+                    try {
+                        await API.deleteAdByAdmin(id);
+                        toast('آگهی حذف شد');
+                        activeList = activeList.filter(l => l.id !== id);
+                        document.getElementById('stat-active').textContent = activeList.length;
+                        renderTab();
+                    } catch (err) {
+                        toast(err.message || 'عملیات ناموفق بود');
+                    }
+                }
+            });
+        });
+    }
+
+    document.querySelectorAll('[data-tab]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            currentTab = btn.dataset.tab;
+            document.querySelectorAll('[data-tab]').forEach(b => b.classList.toggle('active', b === btn));
+            renderTab();
+        });
+    });
+
+    if (typeof renderHeader === 'function') {
+        document.getElementById('header-root').innerHTML = renderHeader();
+        if (typeof attachHeaderEvents === 'function') attachHeaderEvents();
+    }
+</script>
+</body>
+</html>

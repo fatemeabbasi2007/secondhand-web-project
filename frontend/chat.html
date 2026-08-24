@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>گفتگو — Reverb</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div id="toast-region" aria-live="polite"></div>
+
+<main class="page">
+    <div class="topbar">
+        <div class="topbar-inner">
+            <button class="back-circle" onclick="window.location.href='/inbox.html'">→</button>
+            <div class="topbar-title" id="chat-head"></div>
+        </div>
+    </div>
+
+    <div class="conversation" style="height:calc(100vh - 64px)">
+        <div class="message-stream">
+            <div class="message-inner" id="message-inner"></div>
+        </div>
+        <form class="composer" id="message-form">
+            <textarea name="message" id="message-input" placeholder="پیام بنویسید..."></textarea>
+            <button class="send-button" type="submit" aria-label="ارسال">➤</button>
+        </form>
+    </div>
+</main>
+
+<script src="/js/api.js"></script>
+<script src="/js/auth.js"></script>
+<script src="/js/common.js"></script>
+<script>
+    if (!requireAuth('/login.html')) {
+        // redirected
+    } else {
+        initAuth().then(loadChatPage);
+    }
+
+    const convId = new URLSearchParams(window.location.search).get('id');
+    if (!convId) {
+        window.location.href = '/inbox.html';
+    }
+
+    let conversation = null;
+    let messages = [];
+
+    async function loadChatPage() {
+        try {
+            // We need conversation metadata (name, product, adId). Backend has no "get one conversation" endpoint,
+            // so we load the full list and pick ours.
+            const all = await API.getConversations();
+            const raw = all.find(c => c.id === convId);
+            if (!raw) {
+                toast('گفتگو یافت نشد');
+                window.location.href = '/inbox.html';
+                return;
+            }
+
+            conversation = {
+                id: raw.id,
+                advertisementId: raw.advertisementId || raw.adId || raw.advertisement_id,
+                name: raw.otherUserName || raw.otherUsername || raw.buyerName || raw.sellerName || raw.name || 'کاربر',
+                initials: raw.initials || initials(raw.otherUserName || raw.name || 'کاربر'),
+                product: raw.adTitle || raw.product || raw.advertisementTitle || raw.title || ''
+            };
+
+            // Load messages
+            const msgs = await API.getChatMessages(convId);
+            messages = msgs.map(m => ({
+                id: m.id,
+                sender: (m.senderId || m.sender_id) === getCurrentUser()?.id ? 'me' : 'them',
+                text: m.text || m.content || m.message || '',
+                time: m.createdAt || m.timestamp || m.time || ''
+            }));
+
+            renderChat();
+        } catch (err) {
+            console.error(err);
+            toast('خطا در بارگذاری گفتگو');
+        }
+    }
+
+    function renderChat() {
+        if (!conversation) return;
+
+        document.getElementById('chat-head').innerHTML = `
+            <span class="chat-avatar">${esc(conversation.initials)}</span>
+            <div class="topbar-title">
+                <strong>${esc(conversation.name)}</strong>
+                <small>◇ ${esc(conversation.product)}</small>
+            </div>
+        `;
+
+        const inner = document.getElementById('message-inner');
+        inner.innerHTML = `
+            <span class="about-chip">درباره: ${esc(conversation.product)}</span>
+            ${messages.map(m => `
+                <div class="message ${m.sender === 'me' ? 'mine' : ''}">
+                    <div>
+                        <div class="message-bubble">${esc(m.text)}</div>
+                        <p class="message-time">${esc(m.time)}</p>
+                    </div>
+                </div>
+            `).join('')}
+        `;
+        inner.parentElement.scrollTop = inner.parentElement.scrollHeight;
+    }
+
+    document.getElementById('message-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const input = document.getElementById('message-input');
+        const text = input.value.trim();
+        if (!text || !conversation) return;
+
+        // Optimistic UI
+        messages.push({ id: Date.now(), sender: 'me', text, time: 'اکنون' });
+        input.value = '';
+        renderChat();
+
+        try {
+            await API.sendMessage(conversation.advertisementId, {content :  text });
+        } catch (err) {
+            toast(err.message || 'ارسال پیام ناموفق بود');
+        }
+    });
+</script>
+</body>
+</html>
