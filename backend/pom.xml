@@ -86,29 +86,13 @@
                 <artifactId>spring-boot-maven-plugin</artifactId>
             </plugin>
         </plugins>
-
-
-            <plugins>
-                <plugin>
-                    <groupId>org.springframework.boot</groupId>
-                    <artifactId>spring-boot-maven-plugin</artifactId>
-                </plugin>
-            </plugins>
-            <resources>
-                <resource>
-                    <directory>src/main/resources</directory>
-                </resource>
-                <resource>
-                    <directory>../frontend</directory>
-                    <targetPath>static</targetPath>
-                    <includes>
-                        <include>**/*</include>
-                    </includes>
-                </resource>
-            </resources>
-
-
+<!--        <resources>-->
+<!--            <resource>-->
+<!--                <directory>src/main/resources</directory>-->
+<!--            </resource>-->
+<!--        </resources>-->
     </build>
+
 
 
 </project>
