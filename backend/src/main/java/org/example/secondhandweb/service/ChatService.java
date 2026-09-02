@@ -2,7 +2,7 @@ package org.example.secondhandweb.service;
 
 import org.example.secondhandweb.Repository.AdvertisementRepository;
 import org.example.secondhandweb.Repository.ConversationRepository;
-import org.example.secondhandweb.exeption.*;
+import org.example.secondhandweb.exception.*;
 import org.example.secondhandweb.model.*;
 //import org.example.secondhandweb.repository.AdvertisementRepository;
 //import org.example.secondhandweb.repository.ConversationRepository;
@@ -11,6 +11,10 @@ import org.example.secondhandweb.Repository.UserRepository;
 import org.springframework.stereotype.Service;
 import org.example.secondhandweb.dto.ConversationPreviewDTO; // 🟢 New package
 
+import static org.example.secondhandweb.exception.BadRequestException.*;
+import static org.example.secondhandweb.exception.ForbiddenException.*;
+import static org.example.secondhandweb.exception.NotFoundException.*;
+import static org.example.secondhandweb.exception.ConflictException.*;
 import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.List;
@@ -61,7 +65,7 @@ public class ChatService {
         }
 
         if (buyerId.equals(sellerId)) {
-            throw new SameSellerAndBuyerIdExcpetion("کاربر نمی‌تواند به آگهی خودش پیام دهد");
+            throw new SameSellerAndBuyerIdException("کاربر نمی‌تواند به آگهی خودش پیام دهد");
         }
 
         User sender = userRepository.findByID(loggedInUserId)
@@ -140,7 +144,7 @@ public class ChatService {
         }
         Conversation conversation = conversationRepository.findByID(conversationId).orElseThrow(() -> new ConversationNotFoundException("گفت و گو یافت نشد"));
         if ( !user.getId().equals(conversation.getBuyerId()) &&  !user.getId().equals(conversation.getSellerId())){
-            throw new NoAcceessException("ما اجازه دسترسی به محتوای این گفت وگو را ندارید");
+            throw new NoAccessException("ما اجازه دسترسی به محتوای این گفت وگو را ندارید");
         }
 
 

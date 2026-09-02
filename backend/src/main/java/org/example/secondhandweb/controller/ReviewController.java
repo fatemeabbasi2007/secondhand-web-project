@@ -9,7 +9,7 @@ import jakarta.servlet.http.HttpSession;
 import org.example.secondhandweb.model.Review;
 import org.example.secondhandweb.model.User;
 import org.example.secondhandweb.dto.ReviewDTO;
-import org.example.secondhandweb.exeption.*;
+import org.example.secondhandweb.exception.*;
 import org.example.secondhandweb.service.ReviewService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -26,25 +26,19 @@ public class ReviewController {
     public ReviewController(ReviewService reviewService) {
         this.reviewService = reviewService;
     }
-
+    private User getAuthenticatedUser(HttpSession session) {
+        User user = (User) session.getAttribute("user");
+        if (user == null) {
+            throw new ForbiddenException.NoAccessException("ابتدا وارد سامانه شوید");
+        }
+        return user;
+    }
 
     @PostMapping("/submit/{advertisementId}")
     public ResponseEntity<?> submitReview(@RequestBody ReviewDTO reviewDto , @PathVariable String advertisementId , HttpSession session) {
-        User loggedUser = (User) session.getAttribute("user");
-        if ( loggedUser == null){
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(new ErrorResponse("ایتدا وارد شوید"));
-        }
-
-        try{
-            reviewService.submitReview(reviewDto , loggedUser.getId() , advertisementId);
-            return ResponseEntity.ok(new MessageResponse("نظر شما با موفقیت ثبت شد"));
-        }catch (InvalidScoreException | ReviewAlreadyExistsException e){
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new ErrorResponse(e.getMessage()));
-        }catch(UserNotFoundException | AdvertisementNotFoundException e){
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ErrorResponse(e.getMessage()));
-        }catch (UserBannedException | NoAcceessException e){
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(new ErrorResponse(e.getMessage()));
-        }
+        User loggedUser = getAuthenticatedUser(session);
+        reviewService.submitReview(reviewDto, loggedUser.getId(), advertisementId);
+        return ResponseEntity.ok(new MessageResponse("نظر شما با موفقیت ثبت شد"));
     }
 
     /**
@@ -53,18 +47,9 @@ public class ReviewController {
      */
     @GetMapping("/user/{sellerId}/reviews")
     public ResponseEntity<?> getUserReviews(@PathVariable String sellerId , HttpSession session) {
-        User user = (User) session.getAttribute("user");
-        if ( user == null){
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(new ErrorResponse("کاربر یافت نشد"));
-        }
-        try{
-            List<Review> reviews = reviewService.getReviewsForUser(sellerId ,user.getId() );
-            return ResponseEntity.ok(reviews);
-        }catch(UserNotFoundException e){
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ErrorResponse(e.getMessage()));
-        }catch (UserBannedException e){
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(new ErrorResponse(e.getMessage()));
-        }
+        User user = getAuthenticatedUser(session);
+        List<Review> reviews = reviewService.getReviewsForUser(sellerId, user.getId());
+        return ResponseEntity.ok(reviews);
 
     }
 }

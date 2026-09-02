@@ -8,7 +8,11 @@ import org.example.secondhandweb.Repository.UserRepository;
 import org.example.secondhandweb.dto.AdSearchDTO;
 import org.example.secondhandweb.dto.AdminPendingAdDTO;
 import org.example.secondhandweb.dto.AdvertisementDetailDTO;
-import org.example.secondhandweb.exeption.*;
+import org.example.secondhandweb.exception.*;
+import static org.example.secondhandweb.exception.BadRequestException.*;
+import static org.example.secondhandweb.exception.ForbiddenException.*;
+import static org.example.secondhandweb.exception.NotFoundException.*;
+import static org.example.secondhandweb.exception.ConflictException.*;
 import org.example.secondhandweb.model.Advertisement;
 import org.example.secondhandweb.model.AttributeRule;
 import org.example.secondhandweb.model.Category;
@@ -37,7 +41,7 @@ public class AdvertisementService {
     public List<AdSearchDTO> getAdvertisementsByOwnerId(String userID){
         User user = userRepository.findByID(userID).orElseThrow(() -> new UserNotFoundException("کاربر وجود ندارد"));
         if ( !user.isEnabled()){
-            throw new UserBannedException("کاربر مسدود است");
+            throw new ForbiddenException.UserBannedException("کاربر مسدود است");
         }
         List<AdSearchDTO> list = new ArrayList<>();
         for ( Advertisement ad : advertisementRepository.findAll()){
@@ -121,7 +125,7 @@ public class AdvertisementService {
         Advertisement ad = advertisementRepository.findByID(advertisementId)
                 .orElseThrow(() -> new AdvertisementNotFoundException("آگهی یافت نشد"));
         if (!ad.getOwnerId().equals(userId)) {
-            throw new NoAcceessException("شما اجازه دسترسی به این آگهی را ندارید");
+            throw new NoAccessException("شما اجازه دسترسی به این آگهی را ندارید");
         }
         return ad;
     }
@@ -311,7 +315,7 @@ public class AdvertisementService {
     public List<AdminPendingAdDTO> getPendingAdvertisementsForAdmin(String userId) {
         User user = userRepository.findByID(userId).orElseThrow(() -> new UserNotFoundException("کاربر یافت نشد"));
         if (!"ADMIN".equals(user.getRole())) {
-            throw new NoAcceessException("فقط ادمین دسترسی لازم برای این کار را دارد");
+            throw new NoAccessException("فقط ادمین دسترسی لازم برای این کار را دارد");
         }
 
         List<Advertisement> pendingAds = advertisementRepository.findByStatus(AdStatus.PENDING_REVIEW);
@@ -328,7 +332,7 @@ public class AdvertisementService {
     public boolean rejectAdvertisement(String advertisementId, String rejectReason, String adminId) {
         User user = userRepository.findByID(adminId).orElseThrow( () -> new UserNotFoundException("کاربر یافت نشد"));
         if (!"ADMIN".equals(user.getRole())) {
-            throw new NoAcceessException("فقط ادمین دسترسی لازم برای این کار را دارد");
+            throw new NoAccessException("فقط ادمین دسترسی لازم برای این کار را دارد");
         }
         if ( rejectReason.trim().isEmpty()){
             throw new IllegalArgumentException("فیلد دلیل رد اگهی نباید خالی باشد");
@@ -352,7 +356,7 @@ public class AdvertisementService {
     public boolean deleteInappropriateAdByAdmin(String advertisementId , String adminId) {
         User user = userRepository.findByID(adminId).orElseThrow( () -> new UserNotFoundException("کاربر یافت نشد"));
         if (!"ADMIN".equals(user.getRole())) {
-            throw new NoAcceessException("فقط ادمین دسترسی لازم برای این کار را دارد");
+            throw new NoAccessException("فقط ادمین دسترسی لازم برای این کار را دارد");
         }
 //        boolean isRemoved = advertisementRepository.deleteById(advertisementId);
 //

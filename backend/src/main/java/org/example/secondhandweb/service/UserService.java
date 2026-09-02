@@ -2,9 +2,13 @@ package org.example.secondhandweb.service;
 
 import org.example.secondhandweb.Repository.AdvertisementRepository;
 import org.example.secondhandweb.Repository.UserRepository;
-import org.example.secondhandweb.exeption.*;
+import org.example.secondhandweb.exception.*;
 import org.example.secondhandweb.model.Advertisement;
 import org.example.secondhandweb.model.User;
+import static org.example.secondhandweb.exception.BadRequestException.*;
+import static org.example.secondhandweb.exception.ForbiddenException.*;
+import static org.example.secondhandweb.exception.NotFoundException.*;
+import static org.example.secondhandweb.exception.ConflictException.*;
 //import org.example.secondhandweb.repository.AdvertisementRepository;
 //import org.example.secondhandweb.repository.UserRepository;
 import org.springframework.stereotype.Service;
@@ -133,10 +137,10 @@ public class UserService {
 
     public List<User> getAllUsersForAdmin(String adminId) {
         User requester = userRepository.findByID(adminId)
-                .orElseThrow(() -> new NoAcceessException("شما دسترسی لازم برای مشاهده این اطلاعات را ندارید!"));
+                .orElseThrow(() -> new NoAccessException("شما دسترسی لازم برای مشاهده این اطلاعات را ندارید!"));
 
         if (!"ADMIN".equalsIgnoreCase(requester.getRole())) {
-            throw new NoAcceessException("شما دسترسی لازم برای مشاهده این اطلاعات را ندارید!");
+            throw new NoAccessException("شما دسترسی لازم برای مشاهده این اطلاعات را ندارید!");
         }
         List<User> allUsers = userRepository.findAll();
         return allUsers.stream().filter(user -> "USER".equalsIgnoreCase(user.getRole())).toList();
@@ -146,7 +150,7 @@ public class UserService {
     public boolean blockUser(String userId, String adminID) {
         User admin = userRepository.findByID(adminID).orElseThrow(() -> new UserNotFoundException("ادمین یافت نشد"));
         if ( !admin.getRole().equals("ADMIN")){
-            throw new NoAcceessException("برای مسدود کردن دسترسی ادمین لازم است");
+            throw new NoAccessException("برای مسدود کردن دسترسی ادمین لازم است");
         }
         User myUser = userRepository.findByID(userId).orElseThrow(() -> new UserNotFoundException("کاربر یافت نشد"));
         myUser.setEnabled(false);
@@ -158,7 +162,7 @@ public class UserService {
     public boolean unblockUser(String userId , String adminId) {
         User admin = userRepository.findByID(adminId).orElseThrow(() -> new UserNotFoundException("ادمین یافت نشد"));
         if ( !admin.getRole().equals("ADMIN")){
-            throw new NoAcceessException("برای مسدود کردن دسترسی ادمین لازم است");
+            throw new NoAccessException("برای مسدود کردن دسترسی ادمین لازم است");
         }
         User myUser = userRepository.findByID(userId).orElseThrow(() -> new UserNotFoundException("کاربر یافت نشد"));
         myUser.setEnabled(true);

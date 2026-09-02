@@ -4,10 +4,14 @@ import org.example.secondhandweb.Repository.AdvertisementRepository;
 import org.example.secondhandweb.Repository.ConversationRepository;
 import org.example.secondhandweb.Repository.ReviewRepository;
 import org.example.secondhandweb.Repository.UserRepository;
-import org.example.secondhandweb.exeption.*;
+import org.example.secondhandweb.exception.*;
 import org.example.secondhandweb.model.Advertisement;
 import org.example.secondhandweb.model.Review;
 import org.example.secondhandweb.dto.ReviewDTO; // 🟢 New package
+import static org.example.secondhandweb.exception.BadRequestException.*;
+import static org.example.secondhandweb.exception.ForbiddenException.*;
+import static org.example.secondhandweb.exception.NotFoundException.*;
+import static org.example.secondhandweb.exception.ConflictException.*;
 // import org.example.secondhandweb.model.User;
 //import org.example.secondhandweb.repository.AdvertisementRepository;
 //import org.example.secondhandweb.repository.ConversationRepository;
@@ -45,7 +49,7 @@ public class ReviewService {
         User seller = userRepository.findByID(advertisement.getOwnerId()).orElseThrow(() -> new UserNotFoundException("صاحب اگهی یافت نشد"));
 
         if (loggedUserId.equals(seller.getId())){
-            throw new NoAcceessException("شما نمیتوانید به خودتان امتیاز بدهید");
+            throw new NoAccessException("شما نمیتوانید به خودتان امتیاز بدهید");
         }
         String reviewId = loggedUserId + "_" + advertisementId;
         if (reviewRepository.existsById(reviewId)) {
@@ -54,7 +58,7 @@ public class ReviewService {
 
         String expectedConversationId = loggedUserId +"_"+advertisementId;
         if ( !conversationRepository.existsById(expectedConversationId)){
-            throw new NoAcceessException("شما تنها در صورتی می‌توانید امتیاز دهید که درباره این آگهی با فروشنده گفت‌وگو کرده باشید.");
+            throw new NoAccessException("شما تنها در صورتی می‌توانید امتیاز دهید که درباره این آگهی با فروشنده گفت‌وگو کرده باشید.");
         }
         Review review1 = new Review();
         review1.setId(reviewId);
