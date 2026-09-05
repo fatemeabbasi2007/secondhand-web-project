@@ -13,6 +13,7 @@ import static org.example.secondhandweb.exception.BadRequestException.*;
 import static org.example.secondhandweb.exception.ForbiddenException.*;
 import static org.example.secondhandweb.exception.NotFoundException.*;
 import static org.example.secondhandweb.exception.ConflictException.*;
+
 import org.example.secondhandweb.model.Advertisement;
 import org.example.secondhandweb.model.AttributeRule;
 import org.example.secondhandweb.model.Category;
@@ -54,6 +55,13 @@ public class AdvertisementService {
             }
         }
         return list;
+    }
+    private String nullIfBlank(String value) {
+        if (value == null || value.trim().isEmpty()) {
+            return null;
+        }
+
+        return value;
     }
 
     public Advertisement createNewAdvertisement(Advertisement ad, List<String> imageUrls, String userID) {
@@ -218,19 +226,55 @@ public class AdvertisementService {
         return true;
     }
 
-    public List<AdSearchDTO> searchAndFilterActiveAds(String keyword, String categoryId, String city, Double minPrice, Double maxPrice) {
-        return advertisementRepository.findAll().stream()
-                .filter(ad -> ad.getStatus() == AdStatus.ACTIVE)
-                .filter(ad -> keyword == null || keyword.trim().isEmpty() ||
-                        (ad.getTitle() != null && ad.getTitle().contains(keyword)) || (ad.getDescription() != null && ad.getDescription().contains(keyword)))
-                .filter(ad -> categoryId == null || categoryId.trim().isEmpty() || (ad.getCategoryId() != null && ad.getCategoryId().equals(categoryId)))
-                .filter(ad -> city == null || city.trim().isEmpty() || ad.getCity() != null && ad.getCity().equals(city))
-                .filter(ad -> minPrice == null || ad.getPrice() >= minPrice)
-                .filter(ad -> maxPrice == null || ad.getPrice() <= maxPrice)
+    public List<AdSearchDTO> searchAndFilterActiveAds(
+            String keyword,
+            String categoryId,
+            String city,
+            Double minPrice,
+            Double maxPrice) {
+
+        keyword = nullIfBlank(keyword);
+        categoryId = nullIfBlank(categoryId);
+        city = nullIfBlank(city);
+
+        // Query 1:
+        // Get only the advertisements matching the search criteria.
+        List<Advertisement> advertisements =
+                advertisementRepository.searchActiveAds(
+                        AdStatus.ACTIVE,
+                        keyword,
+                        categoryId,
+                        city,
+                        minPrice,
+                        maxPrice
+                );
+
+        // Collect all owner IDs from the advertisements.
+        List<String> ownerIds = advertisements.stream()
+                .map(Advertisement::getOwnerId)
+                .distinct()
+                .toList();
+
+        // Query 2:
+        // Get all required users at once.
+        List<User> users = userRepository.findAllByIdIn(ownerIds);
+
+        // Create a lookup map:
+        // user ID -> username
+        Map<String, String> usernamesById = users.stream()
+                .collect(Collectors.toMap(
+                        User::getId,
+                        User::getUsername
+                ));
+
+        // Build the DTOs without making more database queries.
+        return advertisements.stream()
                 .map(ad -> {
-                    String username = userRepository.findByID(ad.getOwnerId())
-                            .map(User::getUsername)
-                            .orElse("ناشناس");
+                    String username = usernamesById.getOrDefault(
+                            ad.getOwnerId(),
+                            "ناشناس"
+                    );
+
                     return new AdSearchDTO(ad, username);
                 })
                 .collect(Collectors.toList());

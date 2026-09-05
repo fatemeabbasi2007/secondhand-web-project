@@ -38,8 +38,8 @@ public class ReviewService {
 
 
     public synchronized boolean submitReview(ReviewDTO review, String loggedUserId , String advertisementId) {
-        if ( review.getScore() > 5 || review.getScore() < 1 ){
-            throw new InvalidScoreException("اﻣﺘﯿﺎز ﺑﺎﯾﺪ ﺑﯿﻦ ۱ ﺗﺎ ۵ ﺑﺎﺷﺪ.");
+        if (review == null || review.getScore() == null || review.getScore() > 5 || review.getScore() < 1) {
+            throw new InvalidScoreException("امتیاز باید بین ۱ تا ۵ باشد.");
         }
         User user = userRepository.findByID(loggedUserId).orElseThrow(() -> new UserNotFoundException("کاربر یافت نشد"));
         if ( !user.isEnabled()){
